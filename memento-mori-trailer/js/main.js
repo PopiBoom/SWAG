@@ -22,7 +22,10 @@ addEventListener('resize', fitStage);
 fitStage();
 if (RENDER) document.body.classList.add('render');
 
-const pixelRatio = RENDER ? +(params.get('scale') || 2) : Math.min(2, Math.max(1, devicePixelRatio * Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H)));
+// realtime: render at the on-screen size (phones get a lighter buffer); ?q= overrides, e.g. ?q=1
+const fit = Math.min(innerWidth / STAGE_W, innerHeight / STAGE_H);
+const pixelRatio = RENDER ? +(params.get('scale') || 2)
+  : +(params.get('q') || Math.min(innerWidth < 820 ? 0.7 : 1, Math.max(0.5, devicePixelRatio * fit)));
 const engine = new Engine(canvas, { width: STAGE_W, height: STAGE_H, pixelRatio, samples: +(params.get('msaa') || 0) });
 canvas.style.width = STAGE_W + 'px';
 canvas.style.height = STAGE_H + 'px';
