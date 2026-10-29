@@ -14,7 +14,7 @@ function featherTexture(seed) {
   const left = y => { const t = y / H; return (Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05)), 0.55) * 0.92 + 0.08) * W * 0.36 * (t < 0.06 ? t / 0.06 : 1); };
   const right = y => { const t = y / H; return (Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.03)), 0.5) * 0.9 + 0.1) * W * 0.54 * (t < 0.06 ? t / 0.06 : 1); };
   // solid vane base (keeps alpha coverage at every mip level)
-  g.fillStyle = '#1c1c1f';
+  g.fillStyle = '#2b2b30';
   g.beginPath(); g.moveTo(cx, H);
   for (let y = 0; y <= H; y += 8) g.lineTo(cx - left(y), H - y);
   for (let y = H; y >= 0; y -= 8) g.lineTo(cx + right(y), H - y);
@@ -25,7 +25,7 @@ function featherTexture(seed) {
       const y0 = H * (0.04 + 0.95 * (i / 520)) + rnd() * 2;
       const len = (side < 0 ? left(y0) : right(y0)) * 0.98;
       const x1 = cx + side * len, y1 = y0 + len * (0.55 + rnd() * 0.12); // barbs sweep toward the tip
-      const v = 14 + rnd() * 40;
+      const v = 26 + rnd() * 46;
       g.strokeStyle = `rgba(${v},${v},${v + 4},0.85)`;
       g.lineWidth = 1.6 + rnd() * 1.2;
       g.beginPath(); g.moveTo(cx, H - y0); g.quadraticCurveTo(cx + (x1 - cx) * 0.5, H - y0 - (y1 - y0) * 0.2, x1, H - y1); g.stroke();
@@ -71,7 +71,7 @@ function featherGeometry() {
   return g;
 }
 
-export function createWings({ seed = 3, color = 0x2a2a2f, span = 1.0, shoulder = 0.2 } = {}) {
+export function createWings({ seed = 3, color = 0xa4a6ae, span = 1.0, shoulder = 0.2 } = {}) {
   const rnd = mulberry32(seed);
   const { map: tex, edge: edgeTex } = featherTexture(seed + 10);
   const geo = featherGeometry();

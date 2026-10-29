@@ -30,7 +30,7 @@ export function createIdentityShot(engine, A, { rig }) {
     // cracks
     U.uCrackGrowth.value = track([[24, 0.18], [28.0, 0.62, 'inOutSine'], [29.0, 0.95, 'outExpo'], [32.3, 1.25, 'inOutSine'], [32.5, 1.6, 'inQuad']], t);
     U.uCrackFine.value = smooth(25, 29, t);
-    U.uCrackGlow.value = track([[24, 0.6], [27.8, 2.4, 'inOutSine'], [28.95, 4.0, 'inQuad'], [29.1, 9.0, 'outQuad'], [30.0, 4.0], [32.2, 4.5], [32.48, 14, 'inExpo']], t);
+    U.uCrackGlow.value = track([[24, 0.5], [27.8, 1.6, 'inOutSine'], [28.95, 4.0, 'inQuad'], [29.1, 9.0, 'outQuad'], [30.0, 4.0], [32.2, 4.5], [32.48, 14, 'inExpo']], t);
     U.uTime.value = t; U.uSheen.value = 0.08;
     // light
     key.color.set(0xd8dfec); key.angle = 0.32; key.penumbra = 0.7;
@@ -43,7 +43,7 @@ export function createIdentityShot(engine, A, { rig }) {
     rimB.position.set(X1 - 2.8, 2.0, -2.4); rimB.target.position.set(X1, 0.5, 0);
     rimB.intensity = 30;
     red.color.set(0xff1a0c); red.position.set(X1 + 0.1, 0.25, 1.0);
-    red.intensity = U.uCrackGlow.value * 0.12;
+    red.intensity = U.uCrackGlow.value * (t < 28 ? 0.04 : 0.12);
     // smoke rises after the pull-back
     smoke.visible = t > 27.6;
     sm.uTime.value = t; sm.uOpacity.value = smooth(27.8, 29.5, t) * 0.9; sm.uLitAmt.value = 0.35 + 0.25 * smooth(29, 30, t); sm.uRise.value = 0.22;

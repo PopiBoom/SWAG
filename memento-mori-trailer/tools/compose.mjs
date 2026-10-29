@@ -420,7 +420,7 @@ reverseSwell(32.5, 0.4, 0.6);
 // ===== 33:00-42:00 SHOWCASE (filtered groove, glassy)
 fourBars(33.0, { vel: 0.85, cowVel: 0.45, kickP: [0, 6, 10], clapP: [4, 12] }, [RIFF_A, RIFF_B, RIFF_A, RIFF_B]);
 pad(33.0, 41.5, ['E3', 'B3', 'D4', 'G4'], { vel: 0.12, cutoff: 1400 });
-[33.25, 34.27, 35.29, 36.31, 37.33, 38.35].forEach((t, i) => { glassPluck(t, ['E6', 'B5', 'G6', 'D6', 'A5', 'E6'][i], 0.16, i % 2 ? 0.5 : -0.5); whoosh(t - 0.35, 0.5, { vel: 0.18, f0: 900, f1: 5000, pan0: i % 2 ? -0.6 : 0.6, pan1: i % 2 ? 0.6 : -0.6 }); });
+[33.55, 34.53, 35.51, 36.49, 37.47, 38.45].forEach((t, i) => { glassPluck(t, ['E6', 'B5', 'G6', 'D6', 'A5', 'E6'][i], 0.16, i % 2 ? 0.5 : -0.5); whoosh(t - 0.35, 0.5, { vel: 0.18, f0: 900, f1: 5000, pan0: i % 2 ? -0.6 : 0.6, pan1: i % 2 ? 0.6 : -0.6 }); });
 riser(39.4, 41.5, 0.5); clicks(39.6, 40.6, 14, 0.25); snareRoll(40.75, 41.5, 0.5);
 metalHit(40.62, { f0: 523, vel: 0.45, len: 1.5 }); kick(40.62, 0.7);
 reverseSwell(42.0, 0.6, 0.55);

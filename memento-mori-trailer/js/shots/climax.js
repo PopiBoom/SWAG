@@ -98,7 +98,7 @@ export function createClimaxShot(engine, A, { rig, wings }) {
     wings.uniforms.uEdge.value.setRGB(0.25 + 0.9 * edgeRed + flicker, 0.24 + 0.05 * edgeRed, 0.28 + 0.03 * edgeRed);
     wings.uniforms.uRimAmt.value = 0.15;
     wings.uniforms.uBackAmt.value = 0.6 * edgeRed;
-    haloMat.uniforms.uRed.value = 0.2 * smooth(42.6, 46.0, tt) * (1 - 0.88 * smooth(51, 55, tt)) + flicker * 0.15;
+    haloMat.uniforms.uRed.value = 0.2 * smooth(42.6, 46.0, tt) * (1 - 0.94 * smooth(51, 55, tt)) + flicker * 0.15;
     haloMat.uniforms.uCore.value = 0.12 * smooth(44.5, 46.5, tt) * (1 - 0.9 * smooth(51, 55, tt));
     haloMat.uniforms.uSilver.value = 0.02;
     haloMat.uniforms.uTime.value = tt;
@@ -130,11 +130,11 @@ export function createClimaxShot(engine, A, { rig, wings }) {
     key.intensity = 40 * smooth(44.5, 46, tt) * (1 - 0.35 * smooth(51, 55, tt));
     rimA.color.set(0xff2a18); rimA.angle = 0.7; rimA.penumbra = 1;
     rimA.position.set(X3 - 1.2, 3.8, -4.8); rimA.target.position.set(X3, 1.2, -0.4);
-    rimA.intensity = 200 * smooth(42.5, 46, tt) * (1 - 0.75 * smooth(51, 55, tt)) + flicker * 200;
+    rimA.intensity = 200 * smooth(42.5, 46, tt) * (1 - 0.8 * smooth(51, 55, tt)) + flicker * 200;
     rimB.color.set(0xc2cbe0); rimB.angle = 0.7; rimB.penumbra = 1;
     rimB.position.set(X3 + 1.6, 4.2, -4.4); rimB.target.position.set(X3, 1.4, -0.4);
     rimB.intensity = 120 * smooth(43, 46, tt) * (1 - 0.3 * smooth(51, 55, tt));
-    red.color.set(0xff1a0c); red.position.set(X3, 0.6, -1.4); red.intensity = 6 * smooth(43, 46, tt) * (1 - 0.6 * smooth(51, 55, tt));
+    red.color.set(0xff1a0c); red.position.set(X3, 0.6, -1.4); red.intensity = 6 * smooth(43, 46, tt) * (1 - 0.85 * smooth(51, 55, tt));
     // camera: push forward through the climax, slow pull-back into the final card, then hold
     let pos, tgt, fov;
     if (tt < 51.0) {

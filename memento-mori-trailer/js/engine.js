@@ -239,7 +239,7 @@ export class Engine {
         vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0/2.4)) - 0.055, step(0.0031308, c)); }
         void main(){
           vec3 c = texture2D(tSrc, vUv).rgb;
-          vec2 px = floor(vUv * res);
+          vec2 px = floor(vUv * res / max(1.0, res.x / 1080.0) / 1.5);
           float n = h(px + vec2(frame * 1931.0, frame * 7.0)) + h(px + vec2(frame * 389.0 + 5000.0, 9000.0)) - 1.0;
           float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
           c += n * grain * (0.35 + 0.65 * (1.0 - l)) * (0.25 + l);

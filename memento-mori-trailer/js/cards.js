@@ -68,7 +68,7 @@ export function createWord(text, { font = '900 400px "Sofia Sans Extra Condensed
   const w = height * (c.width / c.height);
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { tText: { value: tex }, uReveal: { value: 0 }, uGlint: { value: -0.5 }, uBright: { value: 1.6 }, uOpacity: { value: 1 }, uRed: { value: 0 }, uSlice: { value: 0 }, uSeed: { value: 0 } },
+    uniforms: { tText: { value: tex }, uReveal: { value: 0 }, uGlint: { value: -0.5 }, uBright: { value: 1.12 }, uOpacity: { value: 1 }, uRed: { value: 0 }, uSlice: { value: 0 }, uSeed: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: /* glsl */`
       varying vec2 vUv; uniform sampler2D tText; uniform float uReveal; uniform float uGlint; uniform float uBright; uniform float uOpacity; uniform float uRed; uniform float uSlice; uniform float uSeed;

@@ -7,7 +7,7 @@ import { PHONE } from '../phone.js';
 
 export const X2 = 300;
 const FLOOR_Y = -1.55;
-export const SC_PHONE = new THREE.Vector3(X2, 0.15, -13.2);
+export const SC_PHONE = new THREE.Vector3(X2, 0.15, -25.5);
 
 function pointedArchShape(w, h, t) {
   // gothic two-centred arch: outer and inner outlines
@@ -36,7 +36,7 @@ export function createShowcaseShot(engine, A, { rig, phone }) {
   const stone = new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.7, metalness: 0.0, map: A.blackMarble.color, envMapIntensity: 0.5 });
   const archGeo = new THREE.ExtrudeGeometry(pointedArchShape(2.4, 5.2, 0.28), { depth: 0.5, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 2, curveSegments: 24 });
   const colGeo = new THREE.CylinderGeometry(0.2, 0.24, 7, 16);
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 10; i++) {
     for (const side of [-1, 1]) {
       const a = new THREE.Mesh(archGeo, stone);
       a.position.set(X2 + side * 3.1, FLOOR_Y, 2 - i * 3.2);
@@ -49,11 +49,11 @@ export function createShowcaseShot(engine, A, { rig, phone }) {
     }
   }
   const back = new THREE.Mesh(new THREE.ExtrudeGeometry(pointedArchShape(4.4, 8.5, 0.4), { depth: 0.6, bevelEnabled: false, curveSegments: 32 }), stone);
-  back.position.set(X2, FLOOR_Y, -21);
+  back.position.set(X2, FLOOR_Y, -30);
   group.add(back);
   // black mirror floor
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 40), new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.12, metalness: 0.2, map: A.blackMarble.color, roughnessMap: A.blackMarble.rough, envMapIntensity: 0.9 }));
-  floor.rotation.x = -Math.PI / 2; floor.position.set(X2, FLOOR_Y, -8);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 60), new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.12, metalness: 0.2, map: A.blackMarble.color, roughnessMap: A.blackMarble.rough, envMapIntensity: 0.9 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(X2, FLOOR_Y, -12);
   floor.receiveShadow = true;
   group.add(floor);
   // god rays from the back window
@@ -67,25 +67,25 @@ export function createShowcaseShot(engine, A, { rig, phone }) {
         gl_FragColor = vec4(vec3(0.62, 0.66, 0.75) * a * uAmt, 1.0); }`,
   });
   const ray = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 16), rayMat);
-  ray.position.set(X2, 4.0, -17); ray.rotation.set(-0.35, 0, 0);
+  ray.position.set(X2, 4.0, -26); ray.rotation.set(-0.35, 0, 0);
   group.add(ray);
 
   // --- glass screens with real posts
   const defs = [
-    { tex: A.tg.p37996, pos: [-0.42, 0.42, 0.0], ry: 0.32, crop: 1 },
-    { tex: A.tg.p38049, pos: [0.44, 0.05, -2.0], ry: -0.34, crop: 0.62 },
-    { tex: A.tg.p37980, pos: [-0.44, 0.5, -4.0], ry: 0.3, crop: 1 },
-    { tex: A.tg.c38089, pos: [0.42, 0.0, -6.0], ry: -0.3, crop: 0.66 },
-    { tex: A.tg.p38092, pos: [-0.4, 0.35, -8.0], ry: 0.28, crop: 1 },
-    { tex: A.tg.p38087, pos: [0.38, 0.55, -9.8], ry: -0.26, crop: 1 },
+    { tex: A.tg.p37996, pos: [-1.0, 0.42, 0.0], ry: 0.5, crop: 1 },
+    { tex: A.tg.p38049, pos: [1.0, 0.1, -3.8], ry: -0.5, crop: 0.62 },
+    { tex: A.tg.p37980, pos: [-1.0, 0.45, -7.6], ry: 0.5, crop: 1 },
+    { tex: A.tg.c38089, pos: [1.0, 0.05, -11.4], ry: -0.5, crop: 0.66 },
+    { tex: A.tg.p38092, pos: [-1.0, 0.38, -15.2], ry: 0.5, crop: 1 },
+    { tex: A.tg.p38087, pos: [1.0, 0.5, -19.0], ry: -0.5, crop: 1 },
   ];
-  const VISIT_T0 = 33.25, VISIT_DT = 1.02;
+  const VISIT_T0 = 33.55, VISIT_DT = 0.98;
   const visits = defs.map(d => {
     const c = new THREE.Vector3(X2 + d.pos[0], d.pos[1], d.pos[2]);
     const n = new THREE.Vector3(Math.sin(d.ry), 0, Math.cos(d.ry));
-    return { c, p: c.clone().addScaledVector(n, 2.35).add(new THREE.Vector3(0, 0.05, 0)) };
+    return { c, p: c.clone().addScaledVector(n, 2.6).add(new THREE.Vector3(0, 0.05, 0)) };
   });
-  const camCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(X2, 0.45, 3.4), ...visits.map(v => v.p)], false, 'centripetal');
+  const camCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(X2, 0.45, 6.2), ...visits.map(v => v.p)], false, 'centripetal');
   const tgtCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(X2, 0.4, 0.5), ...visits.map(v => v.c)], false, 'centripetal');
   const cards = defs.map(d => {
     const c = createCard(A, d.tex, { width: 0.9, crop: d.crop, thickness: 0.05 });
@@ -108,7 +108,7 @@ export function createShowcaseShot(engine, A, { rig, phone }) {
     cards.forEach(({ card, refl, def }, i) => {
       const enter = ease.outExpo(clamp((t - 33.0 - i * 0.12) / 0.9));
       const float = Math.sin(t * 0.9 + i * 1.7) * 0.04;
-      const p0 = new THREE.Vector3(X2 + def.pos[0] * lerp(2.4, 1, enter), def.pos[1] + float + (1 - enter) * 0.6, def.pos[2]);
+      const p0 = new THREE.Vector3(X2 + def.pos[0] * lerp(1.8, 1, enter), def.pos[1] + float + (1 - enter) * 0.6, def.pos[2]);
       // target: stacked inside the phone screen
       const p1 = SC_PHONE.clone().add(new THREE.Vector3(0, 0, PHONE.d / 2 + 0.01 + (5 - i) * 0.012));
       const p = p0.lerp(p1, asm);
@@ -138,25 +138,26 @@ export function createShowcaseShot(engine, A, { rig, phone }) {
     key.position.set(X2 + 2.5, 3.5, SC_PHONE.z + 4.5); key.target.position.copy(SC_PHONE);
     key.intensity = 30 * smooth(39.8, 41, t);
     rimA.color.set(0xbcc6da); rimA.angle = 0.7; rimA.penumbra = 1;
-    rimA.position.set(X2 - 2.0, 4.5, -18); rimA.target.position.set(X2, 0, -6); rimA.intensity = 160;
+    rimA.position.set(X2 - 2.0, 4.5, -27); rimA.target.position.set(X2, 0, -12); rimA.intensity = 220;
     rimB.color.set(0xa8b4cc); rimB.angle = 0.7; rimB.penumbra = 1;
-    rimB.position.set(X2 + 2.0, 4.0, 5); rimB.target.position.set(X2, 0, -4); rimB.intensity = 90;
+    rimB.position.set(X2 + 2.0, 4.0, 6); rimB.target.position.set(X2, 0, -8); rimB.intensity = 120;
     red.color.set(0xff2414); red.position.set(X2, FLOOR_Y + 0.3, SC_PHONE.z - 1.5); red.intensity = 2.5 * smooth(40.4, 41.5, t);
 
     // camera visits each screen along a smooth spline, then settles on the phone
     let pos, tgt, fov = 36;
     // visit parameter: dwell on each screen (ease within each 1.02 s slot)
-    const vt = clamp((t - VISIT_T0 + VISIT_DT * 0.55) / VISIT_DT, 0, defs.length);
+    // curve index 0 = entry point, index i+1 = screen i; dwell on screen i at VISIT_T0 + i * VISIT_DT
+    const vt = clamp((t - VISIT_T0) / VISIT_DT, -1, defs.length - 1);
     const vi = Math.floor(vt), vf = vt - vi;
-    const u = clamp((vi + ease.inOutCubic(vf)) / defs.length);
+    const u = clamp((1 + vi + ease.inOutCubic(vf)) / defs.length);
     const slalomPos = camCurve.getPoint(u);
-    const slalomTgt = tgtCurve.getPoint(clamp(u + 0.02));
-    const endPos = new THREE.Vector3(X2 + 0.05, 0.32, SC_PHONE.z + 3.5);
+    const slalomTgt = tgtCurve.getPoint(u);
+    const endPos = new THREE.Vector3(X2 + 0.05, 0.3, SC_PHONE.z + 8.2);
     const endTgt = SC_PHONE.clone().add(new THREE.Vector3(0, 0.05, 0));
     const e = ease.inOutCubic(clamp((t - 39.3) / 1.6));
     pos = slalomPos.lerp(endPos, e);
     tgt = slalomTgt.lerp(endTgt, e);
-    fov = lerp(38, 34, e);
+    fov = lerp(38, 22, e);
     return { pos, tgt, fov, focusTarget: e > 0.5 ? SC_PHONE : null };
   }
   return { group, update };

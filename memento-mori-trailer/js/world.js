@@ -73,7 +73,7 @@ export function buildWorld(engine, A) {
   function baseFx() {
     Object.assign(fx, {
       exposure: 1.0, bloomStrength: 0.7, bloomThreshold: 1.0, bloomKnee: 0.6, aperture: 0, focus: 3, maxBlur: 14,
-      vignette: 0.6, grain: 0.055, chroma: 0.0022, saturation: 0.86, contrast: 1.1, lift: [0.0, 0.0, 0.004], gain: [0.98, 1.0, 1.03],
+      vignette: 0.6, grain: 0.04, chroma: 0.0022, saturation: 0.86, contrast: 1.1, lift: [0.0, 0.0, 0.004], gain: [0.98, 1.0, 1.03],
       redKeep: 0.8, fade: 0, flash: 0, flashColor: [1, 1, 1], uiExposure: 1,
     });
   }
@@ -116,7 +116,7 @@ export function buildWorld(engine, A) {
     fx.flash = 0.35 * Math.exp(-since / 0.06);
     fx.flashColor = [1.0, 0.92, 0.88];
     fx.chroma = 0.0022 + 0.01 * Math.exp(-since / 0.25);
-    scene.environmentIntensity = 0.05;
+    scene.environmentIntensity = 0.05 + 0.1 * smooth(10.8, 12.5, t);
     ashAt(t < 10 ? new THREE.Vector3(0, 0.4, 0.6) : phone.position, new THREE.Vector3(6, 6, 8), 0.5);
   }
 
@@ -225,7 +225,7 @@ export function buildWorld(engine, A) {
   async function prepare(t) { await climax.prepare(t); }
 
   // Sub-frame motion blur (180-degree shutter) only where the camera or debris move fast.
-  const BLUR = [[7.0, 7.6, 4], [7.6, 10.6, 3], [14.15, 15.0, 4], [15.0, 15.45, 3], [18.0, 18.45, 3], [21.0, 21.5, 3], [28.0, 28.9, 4], [39.5, 41.0, 3], [42.0, 42.3, 3]];
+  const BLUR = [[7.0, 7.6, 3], [7.6, 10.6, 2], [14.15, 15.0, 3], [15.0, 15.45, 2], [18.0, 18.45, 2], [21.0, 21.5, 2], [28.0, 28.9, 3], [39.5, 41.0, 2], [42.0, 42.3, 2]];
   function motionBlurAt(t) {
     const shot = shots.find(s => t >= s.t0 && t < s.t1) || shots[shots.length - 1];
     for (const [a, b, n] of BLUR) if (t >= a && t < b) return { subframes: n, shutter: 0.5, range: [shot.t0, shot.t1 - 1e-4] };
