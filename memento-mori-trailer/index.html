@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Memento Mori Trailer</title>
+<meta name="description" content="Cinematic 60-second trailer for the Telegram channel Memento Mori [off.KAPUSTKA] — t.me/memento_mori_osn">
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="css/trailer.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+
+  <div id="type">
+    <!-- 00:04 — first hit -->
+    <div class="t intro" id="t-intro">
+      <div class="line" data-split>MEMENTO</div>
+      <div class="line" data-split>MORI</div>
+    </div>
+
+    <!-- 00:29 — identity hit -->
+    <div class="t ident" id="t-ident">
+      <div class="half top"><div class="l1">НЕ ДЛЯ</div><div class="l2">КАЖДОГО.</div></div>
+      <div class="half bot" aria-hidden="true"><div class="l1">НЕ ДЛЯ</div><div class="l2">КАЖДОГО.</div></div>
+      <i class="slash"></i>
+    </div>
+
+    <!-- 00:46 — climax -->
+    <div class="t atmo" id="t-atmo">
+      <div class="line" data-split>СВОЯ</div>
+      <div class="line" data-split>АТМОСФЕРА.</div>
+    </div>
+
+    <!-- 00:52 — final card -->
+    <div class="t final" id="t-final">
+      <div class="gothic" data-split>Memento Mori</div>
+      <div class="owner">OFF.KAPUSTKA</div>
+      <div class="kind">TELEGRAM CHANNEL</div>
+      <div class="link"><span>t.me/memento_mori_osn</span><i class="rule"></i></div>
+    </div>
+
+    <div id="blackout"></div>
+  </div>
+
+  <div id="loader"><div class="mark">MEMENTO MORI</div><div class="bar"><i></i></div></div>
+  <button id="play" aria-label="Play">▶</button>
+  <div id="hudbar"><i></i></div>
+</div>
+<audio id="music" src="assets/audio/soundtrack.m4a" preload="auto"></audio>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
