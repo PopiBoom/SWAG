@@ -30,9 +30,11 @@ node tools/serve.mjs 8130          # затем открыть http://localhost:
 ```bash
 node tools/serve.mjs 8130 &
 node tools/compose.mjs assets/audio/soundtrack.wav
-node tools/render.mjs --out export/picture.mp4 --scale 1 --fps 60 --mb      # 1080×1920, motion blur
-node tools/mux.mjs export/picture.mp4 assets/audio/soundtrack.wav export/memento_mori_1080x1920_60fps.mp4
-# нативный 4K на машине с GPU:  --scale 2  (2160×3840)
+tools/render_chunks.sh export/frames 1 60     # 1080×1920, 60 fps, motion blur, куски по 10 с (возобновляемо)
+node tools/mux.mjs export/frames/picture.mp4 assets/audio/soundtrack.wav export/memento_mori_1080x1920_60fps.mp4
+node tools/mux.mjs export/frames/picture.mp4 assets/audio/soundtrack.wav export/memento_mori_2160x3840_60fps.mp4 --size 2160x3840 --maxrate 70M
+node tools/verify.mjs export/memento_mori_1080x1920_60fps.mp4 export/check.jpg
+# нативный 4K-рендер на машине с GPU: tools/render_chunks.sh export/frames4k 2 60
 ```
 
 Рендер детерминирован: каждое состояние (камера, обломки, частицы, трещины, CSS-анимации, кадр аватара)
