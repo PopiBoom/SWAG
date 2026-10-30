@@ -281,13 +281,13 @@ export default {
     const err = clamp((t - T.pcErrors) / 1.5);
     const dive = smooth(33.8, 35.2, t);
     return {
-      staticAmt: (1 - smooth(17.5, 18.4, t)) * 0.9 + dive * dive * 0.15,
+      staticAmt: (1 - smooth(17.5, 17.85, t)) * 0.8 + dive * dive * 0.12,
       ca: 0.2 + err * 0.8 + dive * 1.5, glitch: err * 0.35 * (stepNoise(t, 10, 21) > 0.5 ? 1 : 0.2) + pulse(t, T.pcErrors, 5) * 0.5 + dive * 0.3,
       tear: err * 0.4, rgbSplit: err * 0.4, redFlash: pulse(t, T.pcErrors, 5) * 0.3,
       radial: dive * 0.9, samples: dive > 0.1 ? 4 : 1, shutter: 0.7,
       dof: t > 22 && t < 27 ? 0.85 : 0.55, focus: t > 22.5 && t < 27 ? 1.9 : t < 22.5 ? 9 : 4.0, focusRange: t > 22.5 && t < 27 ? 1.0 : 4,
       bloom: 1.1, bloomThreshold: 0.4, noiseAmt: 0.2, scan: 0.25, vig: 0.8, exposure: 1.35,
-      flash: smooth(34.9, 35.2, t) * 0.7,
+      flash: smooth(35.0, 35.2, t) * 0.2,
     };
   },
 

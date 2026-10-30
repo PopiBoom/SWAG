@@ -275,7 +275,7 @@ export default {
       glitch: errPulse * 0.25 + pulse(t, T.err404, 5) * 0.7 + g * g * 0.9 * (stepNoise(t, 14, 2) > 0.3 ? 1 : 0.2) + hit * 0.5 + late,
       rgbSplit: g * 0.8 + hit,
       tear: g * 0.8 + (t > T.freeze && t < T.err404 ? 0.4 : 0),
-      staticAmt: g * 0.35 * stepNoise(t, 18, 3) + smooth(17.0, 17.5, t) * 0.95 + pulse(t, T.err404, 10) * 0.3,
+      staticAmt: g * 0.35 * stepNoise(t, 18, 3) + smooth(17.2, 17.5, t) * 0.8 + pulse(t, T.err404, 10) * 0.3,
       pixelate: g > 0.5 && stepNoise(t, 10, 8) > 0.75 ? 0.25 : 0,
       noiseAmt: 0.25 + g * 0.6, scan: 0.35, curve: t < T.title - 1.25 ? 0.12 : 0.02,
       radial: zoom * 0.55 + hit * 0.8, radialCenter: [0.5, 0.5],

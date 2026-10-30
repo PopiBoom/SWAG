@@ -235,11 +235,15 @@ export default {
     shardMat.uniforms.prog.value = clamp((t - DROP) / 1.3);
     shards.visible = t < DROP + 1.4;
     // облачка
+    const camP = new THREE.Vector3(...sampleKeys(KEYS, t, 'p'));
     bubbles.forEach((m, i) => {
       const { base, ph, sp } = m.userData;
       m.position.set(base.x + Math.sin(t * sp + ph) * 3, base.y + Math.sin(t * sp * 0.7 + ph) * 2 + collapse * (hash(i) * 40), base.z + Math.cos(t * sp * 0.5 + ph) * 3);
       m.quaternion.copy(cam.quaternion);
-      m.material.opacity = 0.95 * (1 - collapse * 0.8);
+      // облачко у самой камеры растворяется, чтобы пролёт сквозь него не давал белый кадр
+      const cd = m.position.distanceTo(camP);
+      m.material.opacity = 0.95 * (1 - collapse * 0.8) * smooth(5, 16, cd);
+      m.visible = cd > 4;
     });
     // молнии между соседними «спорщиками»
     const bp = bolts.geometry.attributes.position.array, bc = bolts.geometry.attributes.color.array; bp.fill(0); bc.fill(0);
@@ -301,7 +305,7 @@ export default {
     const collapse = smooth(T.collapse, T.blackout - 0.4, t);
     const end = smooth(T.blackout - 0.25, T.blackout, t);
     return {
-      flash: pulse(t, DROP, 10) * 0.8 + wp * 0.2,
+      flash: pulse(t, DROP, 14) * 0.35 + wp * 0.12,
       ca: 0.4 + wp * 1.5 + drop * 1.2 + warn * 0.8 + end * 3, glitch: wp * 0.35 + drop * 0.5 + warn * 0.35 * (stepNoise(t, 12, 9) > 0.5 ? 1 : 0.2) + end,
       rgbSplit: wp * 0.6 + warn * 0.5 + end, tear: warn * 0.6, noiseAmt: 0.25 + warn * 0.4, redFlash: pulse(t, T.warning, 4) * 0.5,
       radial: drop * 0.45 + wp * 0.3 + 0.04, samples: 3, shutter: 0.5,

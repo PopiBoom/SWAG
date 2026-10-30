@@ -10,7 +10,7 @@ const cam = new THREE.PerspectiveCamera(55, 16 / 9, 0.05, 200);
 let nodes = [], lines, linePairs = [], pulses, logo, ring1, ring2, ico, logoMat, figures = [], membrane, membraneMat, floorGrid;
 const N = 62;
 const DIAG = [['62', ' ЧЕЛОВЕКА.'], ['0', ' ФИЛЬТРОВ.'], ['1', ' ОБЩИЙ ДИАГНОЗ.']];
-const DIAG_T = [46.4, 47.3, 48.2];
+const DIAG_T = [45.9, 46.7, 47.5];
 
 // фигура с френелевым свечением
 const figMat = new THREE.ShaderMaterial({
@@ -184,7 +184,7 @@ export default {
     const dive = smooth(49.0, 50.0, t);
     let slam = 0; for (const d of DIAG_T) slam = Math.max(slam, pulse(t, d, 6));
     return {
-      flash: enter * 0.7 + smooth(49.75, 50.0, t) * 0.9,
+      flash: enter * 0.12 + smooth(49.85, 50.0, t) * 0.25,
       ca: 0.25 + chaos * 0.8 + slam * 1.5 + enter * 2, glitch: chaos * 0.3 * (stepNoise(t, 8, 31) > 0.55 ? 1 : 0.15) + slam * 0.4 + enter * 0.4,
       rgbSplit: chaos * 0.5 + slam * 0.6, tear: chaos * 0.3, noiseAmt: 0.2 + chaos * 0.5,
       radial: enter * 0.8 + dive * 1.0 + slam * 0.3, samples: enter > 0.2 || dive > 0.15 ? 4 : 1, shutter: 0.7,
@@ -223,7 +223,8 @@ export default {
     }
     // «62 ЧЕЛОВЕКА. 0 ФИЛЬТРОВ. 1 ОБЩИЙ ДИАГНОЗ.»
     if (t >= DIAG_T[0] && t < 49.6) {
-      const out = 1 - smooth(49.1, 49.6, t);
+      const out = 1 - smooth(49.2, 49.6, t);
+      h.rect(0, 270, 1920, 470, '#000', 0.55 * clamp((t - DIAG_T[0]) / 0.2) * out);
       DIAG.forEach(([num, word], i) => {
         const k = t - DIAG_T[i];
         if (k < 0) return;

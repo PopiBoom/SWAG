@@ -130,7 +130,7 @@ export default {
     const intro = 1 - smooth(84.67, 85.2, t);
     return {
       fade: (t >= T.black && t < T.never - 0.05) || (t > T.neverEnd + 0.35 && t < T.credits) ? 1 : 0,
-      flash: slam * 0.9 + intro * 0.0, ca: 0.2 + slam * 3 + st * 1.5 + endG * 4 + beat, glitch: slam * 0.6 + st * 0.4 + endG * 1.0 + beat * 0.3 + pulse(t, T.monTitle, 5) * 0.4,
+      flash: pulse(t, SLAM, 16) * 0.3, ca: 0.2 + slam * 3 + st * 1.5 + endG * 4 + beat, glitch: slam * 0.6 + st * 0.4 + endG * 1.0 + beat * 0.3 + pulse(t, T.monTitle, 5) * 0.4,
       rgbSplit: slam + st * 0.6 + endG, tear: endG + (t < T.monitor + 1 && t > T.monitor ? 0.3 : 0), staticAmt: endG * 0.8 * stepNoise(t, 20, 3) + pulse(t, T.monitor, 5) * 0.3,
       noiseAmt: 0.3, scan: 0.35, curve: post ? 0 : 0.06, vig: 0.85, radial: slam * 1.2 + beat * 0.3, samples: slam > 0.3 ? 4 : 1,
       bloom: post ? 1.2 : 1.0, bloomThreshold: 0.4, dof: post ? 0 : 0.5, focus: 3.5, focusRange: 2.5, pixelate: endG > 0.5 ? (endG - 0.5) * 0.8 : 0,

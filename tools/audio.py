@@ -235,7 +235,7 @@ for k in range(30): place(sfx, load(PS('retro-ui-click')), T['statsIn'] + k * 0.
 place(sfx, load(PS('scifi-ui-alarm')), T['statsIn'] + 1.3, 0.5, rev=0.2)
 place(sfx, load(PS('glitch-transitions-glitch-hit')), T['chaos'], 0.8)
 for k in range(8): place(sfx, crush(noise(0.08) * 0.5, 3, 16), T['chaos'] + 0.2 + k * 0.22 + rng.random() * 0.08, 0.45, pan=rng.uniform(-0.8, 0.8))
-for t0 in [46.4, 47.3, 48.2]:
+for t0 in [45.9, 46.7, 47.5]:
     place(sfx, impact(1.0), t0, 0.75, rev=0.25)
     place(sfx, load(PS('glitch-transitions-glitch-hit')), t0, 0.5)
 place(sfx, riser(1.0), 49.0, 0.7)

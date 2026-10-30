@@ -96,7 +96,7 @@ void main(){
   col += texture2D(tHudBloom, uv).rgb * hudGlow;
   // статика ТВ
   float n = h21(uv * vec2(1920.0, 1080.0) * 0.5 + tf * 13.7);
-  col = mix(col, vec3(n) * vec3(0.85, 1.0, 0.9), staticAmt);
+  col = mix(col, vec3(n * 0.6) * vec3(0.85, 1.0, 0.9), staticAmt);
   col += (n - 0.5) * grain;
   // линии развёртки
   col *= 1.0 - scan * (0.5 + 0.5 * sin(uv.y * 1080.0 * 3.14159)) * 0.35;

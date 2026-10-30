@@ -42,7 +42,7 @@ export function drawLaw(t, target = lawScreen) {
     const k = t - T.allowed;
     const g = k < 0.3 ? 1 - k / 0.3 : 0;
     c.textAlign = 'center';
-    c.fillStyle = '#fff'; c.font = '150px Dela'; c.shadowColor = C.red; c.shadowBlur = 50;
+    c.fillStyle = '#fff'; c.font = '150px Dela'; c.shadowColor = C.red; c.shadowBlur = 18;
     c.fillText(scramble('РАЗРЕШЕНО', g, Math.floor(t * 30)), W / 2, 420);
     c.fillStyle = C.red; c.font = '128px Dela';
     c.fillText(scramble('АБСОЛЮТНО ВСЁ', g, 3 + Math.floor(t * 30)), W / 2, 600);
@@ -131,7 +131,7 @@ export default {
     drawLaw(t);
     const red = smooth(T.redLight, T.redLight + 0.12, t);
     const alarm = red * (0.6 + 0.4 * Math.sin(t * 12));
-    screenMat.uniforms.time.value = t; screenMat.uniforms.gain.value = 1.2 + pulse(t, T.allowed, 4) * 0.8;
+    screenMat.uniforms.time.value = t; screenMat.uniforms.gain.value = (t > T.allowed ? 0.95 : 1.2) + pulse(t, T.allowed, 4) * 0.8;
     screenMat.uniforms.flicker.value = red * 0.2;
     // боковые экраны: бегущий лог
     sideMats.forEach((sm, si) => {
@@ -179,16 +179,16 @@ export default {
   fx(t) {
     const red = smooth(T.redLight, T.redLight + 0.12, t);
     let lp = 0; for (const lt of T.lines) lp = Math.max(lp, pulse(t, lt, 8));
-    const enter = 1 - smooth(50, 50.7, t);
+    const enter = 1 - smooth(50, 50.45, t);
     const cr = smooth(T.crack, DROP, t);
     return {
-      flash: enter * 0.85, radial: enter * 0.9 + cr * 0.3, samples: enter > 0.15 ? 4 : 1,
-      ca: 0.2 + lp * 0.7 + red * 0.5 + pulse(t, T.allowed, 3) * 2 + cr * 1.2,
+      flash: pulse(t, 50, 12) * 0.25, radial: enter * 0.9 + cr * 0.3, samples: enter > 0.15 ? 4 : 1,
+      ca: 0.2 + lp * 0.7 + red * 0.5 * (1 - win(t, T.allowed + 0.4, T.crack, 0.2, 0.1)) + pulse(t, T.allowed, 5) * 1.5 + cr * 1.2,
       glitch: lp * 0.15 + pulse(t, T.redLight, 4) * 0.6 + pulse(t, T.allowed, 5) * 0.5 + cr * 0.4 * (stepNoise(t, 16, 4) > 0.4 ? 1 : 0),
       rgbSplit: pulse(t, T.allowed, 3) * 0.8 + cr * 0.6, redFlash: pulse(t, T.redLight, 4) * 0.6,
       noiseAmt: 0.2 + red * 0.3, tear: cr * 0.5,
       dof: 0.5 * (1 - smooth(63, 64.5, t)), focus: 48 - 40 * smooth(50, 61, t), focusRange: 12,
-      bloom: 1.1 + red * 0.3, bloomThreshold: 0.4, vig: 0.85, exposure: 1.2,
+      bloom: 1.1 + red * 0.3 - win(t, T.allowed + 0.3, T.crack, 0.2, 0.1) * 0.6, bloomThreshold: t > T.allowed ? 0.6 : 0.4, vig: 0.85, exposure: 1.2,
     };
   },
 
