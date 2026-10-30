@@ -31,7 +31,7 @@ void main(){
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }`;
 const shardFrag = `uniform sampler2D map; uniform float gain; varying vec2 vUv; varying float vA;
-void main(){ vec3 c = texture2D(map, vUv).rgb * gain; float edge = 0.0; gl_FragColor = vec4(c + vec3(0.15, 0.0, 0.03), 1.0); if(vA <= 0.01) discard; }`;
+void main(){ vec3 c = texture2D(map, vUv).rgb * gain; float edge = 0.0; gl_FragColor = vec4(c + vec3(0.06, 0.0, 0.01), 1.0); if(vA <= 0.01) discard; }`;
 
 function buildShards(tex) {
   const cols = 16, rows = 9, w = SCREEN.w, h = SCREEN.h, r = rng(12);
@@ -54,7 +54,7 @@ function buildShards(tex) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('aCen', new THREE.Float32BufferAttribute(cen, 3)); g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 3));
   g.setAttribute('aAxis', new THREE.Float32BufferAttribute(axis, 3)); g.setAttribute('aRnd', new THREE.Float32BufferAttribute(rnd, 1));
-  shardMat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex }, prog: { value: 0 }, gain: { value: 1.2 } }, vertexShader: shardVert, fragmentShader: shardFrag, side: THREE.DoubleSide });
+  shardMat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex }, prog: { value: 0 }, gain: { value: 0.85 } }, vertexShader: shardVert, fragmentShader: shardFrag, side: THREE.DoubleSide });
   const m = new THREE.Mesh(g, shardMat); m.frustumCulled = false; return m;
 }
 
@@ -173,12 +173,15 @@ export default {
     const wcol = [[1, 0.05, 0.2], [0.35, 1, 0.2], [1, 1, 1], [0.35, 1, 0.2]];
     const wpos = [[-34, 95, -110], [30, 85, -175], [-26, 100, -245], [24, 92, -305]];
     CITY_WORDS.forEach((w, i) => {
-      const mat = holoMaterial(wordTex(w, i % 2 ? 'Glitch' : 'Dela', 300, '#ffffff', 2048, 420), wcol[i], { gain: '2.2' });
+      const mat = holoMaterial(wordTex(w, 'Dela', 300, '#ffffff', 2048, 420), wcol[i], { gain: '1.35' });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(175, 36), mat); mat.depthTest = false; m.renderOrder = 10;
+      // тёмная подложка: слово читается поверх светящихся фасадов
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(190, 46), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
+      plate.renderOrder = 9; m.add(plate);
       // слово встаёт по ходу взгляда камеры в момент своего такта
       const cp = new THREE.Vector3(...sampleKeys(KEYS, T.words[i] + 0.4, 'p')), cl = new THREE.Vector3(...sampleKeys(KEYS, T.words[i] + 0.4, 'l'));
       m.position.copy(cp).addScaledVector(cl.sub(cp).normalize(), 165).add(new THREE.Vector3(0, 16, 0));
-      m.userData = { mat, t0: T.words[i] }; words.push(m); scene.add(m);
+      m.userData = { mat, plate, t0: T.words[i] }; words.push(m); scene.add(m);
     });
     // пиксельный распад
     const pn = 14000, pp = new Float32Array(pn * 3), ps = new Float32Array(pn), pc = new Float32Array(pn * 3), pv = new Float32Array(pn * 4);
@@ -286,7 +289,9 @@ export default {
       w.visible = k > -0.01;
       w.scale.set(e, e * (k < 0.08 ? 0.15 : 1), 1);
       w.quaternion.copy(cam.quaternion);
-      m.uniforms.time.value = t; m.uniforms.opacity.value = clamp(k / 0.1) * (1 - smooth(2.3, 2.65, k)) * (1 - smooth(T.collapse - 0.2, T.collapse + 0.5, t)); m.uniforms.glitch.value = k < 0.4 ? 1.5 : 0.2 + warn;
+      const op = clamp(k / 0.1) * (1 - smooth(2.3, 2.65, k)) * (1 - smooth(T.collapse - 0.2, T.collapse + 0.5, t));
+      m.uniforms.time.value = t; m.uniforms.opacity.value = op; m.uniforms.glitch.value = k < 0.3 ? 0.6 : 0.06 + warn * 0.4;
+      w.userData.plate.material.opacity = op * 0.6;
     });
     towerNameMat.uniforms.time.value = t;
     towerNameMat.uniforms.opacity.value = smooth(T.tower, T.tower + 0.5, t);
