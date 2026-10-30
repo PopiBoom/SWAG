@@ -40,7 +40,7 @@ async function worker(id, queue) {
   const workers = +(process.argv[2] || 3);
   const from = Math.floor(+(process.argv[3] || 0) * FPS), to = Math.ceil(+(process.argv[4] || DUR) * FPS);
   const queue = [];
-  for (let f = 0; f < TOTAL; f += CHUNK) { const e = Math.min(TOTAL, f + CHUNK); if (e > from && f < to) queue.push([f, e]); }
+  for (let f = 0; f < TOTAL; f += CHUNK) { const e = Math.min(TOTAL, f + CHUNK); if (e > from && f < to && (process.env.FORCE || !fs.existsSync(path.join(SEGDIR, `seg_${String(f).padStart(5, '0')}.mp4`)))) queue.push([f, e]); }
   // сначала тяжёлые сегменты (город), чтобы воркеры закончили примерно одновременно
   queue.sort((a, b) => (b[0] >= 3960 && b[0] < 5100 ? 1 : 0) - (a[0] >= 3960 && a[0] < 5100 ? 1 : 0));
   console.log('segments:', queue.map((q) => q[0]).join(' '));

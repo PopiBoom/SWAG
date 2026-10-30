@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { T, MESSAGES, CITY_WORDS, DROP } from '../timeline.js';
 import { C } from '../hud.js';
 import { clamp, smooth, pulse, win, easeOutBack, easeOutCubic, easeOutExpo, rng, hash, shake, stepNoise, noise1, scramble } from '../util.js';
-import { applyCam, canvasTex, holoMaterial, pointsMaterial } from '../util3d.js';
+import { applyCam, sampleKeys, canvasTex, holoMaterial, pointsMaterial } from '../util3d.js';
 import { bubbleTex, facadeTex, wordTex } from '../textures.js';
 import { drawLaw, SCREEN, FINAL_DIST } from './s4_laws.js';
 
@@ -57,6 +57,19 @@ function buildShards(tex) {
   shardMat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex }, prog: { value: 0 }, gain: { value: 1.2 } }, vertexShader: shardVert, fragmentShader: shardFrag, side: THREE.DoubleSide });
   const m = new THREE.Mesh(g, shardMat); m.frustumCulled = false; return m;
 }
+
+const KEYS = [
+  { t: DROP, p: [...START], l: [START[0], START[1], -100], roll: 0, fov: 50 },
+  { t: 66.45, p: [START[0], START[1], START[2] - 0.6], l: [START[0], START[1] - 0.5, -100], roll: 0.01, fov: 51 },
+  { t: 67.6, p: [2, 24, 8], l: [-4, 20, -120], roll: 0.08, fov: 62 },
+  { t: 69.6, p: [-6, 17, -55], l: [-12, 32, -130], roll: 0.14, fov: 64 },
+  { t: 72.2, p: [5, 22, -120], l: [10, 36, -200], roll: -0.12, fov: 64 },
+  { t: 74.8, p: [-4, 16, -180], l: [-10, 40, -260], roll: 0.1, fov: 62 },
+  { t: 77.4, p: [6, 26, -240], l: [8, 40, -320], roll: -0.08, fov: 60 },
+  { t: 79.6, p: [0, 40, -265], l: [0, 80, -360], roll: 0.04, fov: 62 },
+  { t: 82.2, p: [0, 95, -170], l: [0, 185, -360], roll: 0.0, fov: 64 },
+  { t: T.blackout, p: [0, 120, -110], l: [0, 215, -360], roll: -0.03, fov: 66 },
+];
 
 const facadeMat = (tex, tint) => new THREE.ShaderMaterial({
   uniforms: { map: { value: tex }, tint: { value: new THREE.Vector3(...tint) }, red: { value: 0 }, time: { value: 0 }, fogC: { value: new THREE.Vector3(0.01, 0.02, 0.01) } },
@@ -161,7 +174,10 @@ export default {
     const wpos = [[-34, 95, -110], [30, 85, -175], [-26, 100, -245], [24, 92, -305]];
     CITY_WORDS.forEach((w, i) => {
       const mat = holoMaterial(wordTex(w, i % 2 ? 'Glitch' : 'Dela', 300, '#ffffff', 2048, 420), wcol[i], { gain: '2.2' });
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(90, 18.5), mat); m.position.set(...wpos[i]);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(175, 36), mat); mat.depthTest = false; m.renderOrder = 10;
+      // слово встаёт по ходу взгляда камеры в момент своего такта
+      const cp = new THREE.Vector3(...sampleKeys(KEYS, T.words[i] + 0.4, 'p')), cl = new THREE.Vector3(...sampleKeys(KEYS, T.words[i] + 0.4, 'l'));
+      m.position.copy(cp).addScaledVector(cl.sub(cp).normalize(), 165).add(new THREE.Vector3(0, 16, 0));
       m.userData = { mat, t0: T.words[i] }; words.push(m); scene.add(m);
     });
     // пиксельный распад
@@ -266,27 +282,15 @@ export default {
       w.visible = k > -0.01;
       w.scale.set(e, e * (k < 0.08 ? 0.15 : 1), 1);
       w.quaternion.copy(cam.quaternion);
-      m.uniforms.time.value = t; m.uniforms.opacity.value = clamp(k / 0.1) * (1 - collapse); m.uniforms.glitch.value = k < 0.4 ? 1.5 : 0.2 + warn;
+      m.uniforms.time.value = t; m.uniforms.opacity.value = clamp(k / 0.1) * (1 - smooth(2.3, 2.65, k)) * (1 - smooth(T.collapse - 0.2, T.collapse + 0.5, t)); m.uniforms.glitch.value = k < 0.4 ? 1.5 : 0.2 + warn;
     });
     towerNameMat.uniforms.time.value = t;
     towerNameMat.uniforms.opacity.value = smooth(T.tower, T.tower + 0.5, t);
     towerName.quaternion.copy(cam.quaternion);
     towerName.scale.setScalar(0.6 + 0.4 * easeOutExpo(clamp((t - T.tower) / 0.8)));
-    const keys = [
-      { t: DROP, p: [...START], l: [START[0], START[1], -100], roll: 0, fov: 50 },
-      { t: 66.45, p: [START[0], START[1], START[2] - 0.6], l: [START[0], START[1] - 0.5, -100], roll: 0.01, fov: 51 },
-      { t: 67.6, p: [2, 24, 8], l: [-4, 20, -120], roll: 0.08, fov: 62 },
-      { t: 69.6, p: [-6, 17, -55], l: [-12, 32, -130], roll: 0.14, fov: 64 },
-      { t: 72.2, p: [5, 22, -120], l: [10, 36, -200], roll: -0.12, fov: 64 },
-      { t: 74.8, p: [-4, 16, -180], l: [-10, 40, -260], roll: 0.1, fov: 62 },
-      { t: 77.4, p: [6, 26, -240], l: [8, 40, -320], roll: -0.08, fov: 60 },
-      { t: 79.6, p: [0, 40, -265], l: [0, 80, -360], roll: 0.04, fov: 62 },
-      { t: 82.2, p: [0, 95, -170], l: [0, 185, -360], roll: 0.0, fov: 64 },
-      { t: T.blackout, p: [0, 120, -110], l: [0, 215, -360], roll: -0.03, fov: 66 },
-    ];
     let wp = 0; for (const wt of T.words) wp = Math.max(wp, pulse(t, wt, 5));
     const sh = 0.4 + wp * 1.2 + warn * 0.8 + pulse(t, DROP, 2) * 2;
-    applyCam(cam, keys, t, { dx: shake(t, 51) * sh, dy: shake(t, 52) * sh, roll: shake(t, 53) * 0.01 * sh });
+    applyCam(cam, KEYS, t, { dx: shake(t, 51) * sh, dy: shake(t, 52) * sh, roll: shake(t, 53) * 0.01 * sh });
     return { scene, camera: cam };
   },
 

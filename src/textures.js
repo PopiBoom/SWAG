@@ -52,8 +52,11 @@ export function bubbleTex(name, text, seed, o = {}) {
 // большая надпись для голограмм
 export function wordTex(word, font = 'Glitch', size = 300, color = '#ffffff', w = 2048, h = 420) {
   const { ctx: c, tex } = canvasTex(w, h);
-  c.font = `${size}px ${font}`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillStyle = color; c.fillText(word, w / 2, h / 2 + size * 0.04);
+  c.font = `${size}px ${font}`;
+  // подгонка: текст не шире 92% текстуры
+  const fit = Math.min(size, size * (w * 0.92) / c.measureText(word).width);
+  c.font = `${fit}px ${font}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = color; c.fillText(word, w / 2, h / 2 + fit * 0.04);
   return tex;
 }
 
