@@ -1,6 +1,6 @@
 out/segments/
 out/video_only.mp4
-out/render.log
+out/render*.log
 *.part.mp4
 node_modules/
 # неиспользованные кандидаты и архивы
