@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>SWAG_ZOV_NEFOR.exe — Digital Anarchy</title>
+<style>
+  html, body { margin: 0; background: #050505; color: #39FF14; font: 14px monospace; overflow: hidden; }
+  #c { display: block; width: 1920px; height: 1080px; }
+  body:not(.render) #c { width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; margin: auto; }
+  #ui { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: rgba(0,0,0,.6); }
+  body.render #ui { display: none; }
+  #ui input[type=range] { flex: 1; accent-color: #39FF14; }
+  #ui button { background: #111; color: #39FF14; border: 1px solid #39FF14; padding: 4px 12px; cursor: pointer; font: inherit; }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div id="ui"><button id="play">▶ PLAY</button><input id="seek" type="range" min="0" max="117" step="0.01" value="0"><span id="tc">0.00</span></div>
+<audio id="aud" src="out/soundtrack.m4a" preload="auto"></audio>
+<script type="module">
+import { boot } from './src/main.js';
+const params = new URLSearchParams(location.search);
+if (params.has('render')) document.body.classList.add('render');
+const app = await boot(document.getElementById('c'));
+window.renderAt = app.renderAt;
+window.DURATION = app.duration;
+window.ready = true;
+if (!params.has('render')) {
+  // превью: время берётся из аудио, чтобы картинка и звук шли вместе
+  const aud = document.getElementById('aud'), seek = document.getElementById('seek'), tc = document.getElementById('tc');
+  let playing = false, t0 = 0, start = 0;
+  const now = () => (playing ? (aud.readyState >= 2 && !aud.error ? aud.currentTime : t0 + (performance.now() - start) / 1000) : +seek.value);
+  document.getElementById('play').onclick = () => {
+    playing = !playing;
+    if (playing) { t0 = +seek.value; start = performance.now(); aud.currentTime = t0; aud.play().catch(() => {}); } else aud.pause();
+  };
+  seek.oninput = () => { aud.currentTime = +seek.value; app.renderAt(+seek.value); };
+  const loop = () => { const t = now(); if (playing) seek.value = t; tc.textContent = t.toFixed(2); app.renderAt(t); requestAnimationFrame(loop); };
+  loop();
+}
+</script>
+</body>
+</html>

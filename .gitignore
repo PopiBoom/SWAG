@@ -1,0 +1,15 @@
+out/segments/
+out/video_only.mp4
+out/render.log
+*.part.mp4
+node_modules/
+# неиспользованные кандидаты и архивы
+assets/audio/src/assembly.wav
+assets/audio/src/rager.mp3
+assets/audio/src/dark_alleys.ogg
+assets/audio/src/rave_spider.ogg
+assets/sfx/src/*.zip
+assets/sfx/src/static10.wav
+assets/sfx/src/static11.wav
+tools/bench.*
+out/soundtrack.wav
