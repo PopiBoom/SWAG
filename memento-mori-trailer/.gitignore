@@ -3,3 +3,4 @@ export/*.mov
 node_modules/
 *.log
 export/*.zip
+!export/memento_mori_trailer_1080x1920_60fps.mp4
