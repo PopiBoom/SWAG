@@ -5,6 +5,15 @@ export const C = {
   dimGreen: '#1f8a0c', ghost: '#8a8a8a',
 };
 
+// Аватарка канала Memento Mori (видео-цикл 4.9 с → 74 кадра по 15 к/с)
+export const MEMENTO = [];
+export async function loadMemento() {
+  await Promise.all(Array.from({ length: 74 }, (_, i) => new Promise((res, rej) => {
+    const im = new Image(); im.onload = () => res(); im.onerror = rej;
+    im.src = `assets/memento/f${String(i + 1).padStart(3, '0')}.jpg`; MEMENTO[i] = im;
+  })));
+}
+
 // Слой типографики поверх 3D (Canvas2D → текстура → пост-обработка: глитч/CA применяются ко всему кадру)
 export class HUD {
   constructor(w, h) {
@@ -63,6 +72,32 @@ export class HUD {
     c.font = `${o.weight || ''} ${o.size || 48}px ${o.font || 'Mono'}`; c.letterSpacing = `${o.track || 0}px`;
     const w = c.measureText(str).width; c.restore(); return w;
   }
+  // круглая аватарка канала: кольца, срезовый глитч, RGB-расслоение
+  avatar(t, cx, cy, r, alpha = 1, g = 0) {
+    if (alpha <= 0.001 || !MEMENTO.length) return;
+    const c = this.ctx, im = MEMENTO[Math.floor(t * 15) % MEMENTO.length];
+    c.save(); c.globalAlpha = alpha;
+    c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.save(); c.clip();
+    const tf = Math.floor(t * 24), n = g > 0 ? 9 : 1;
+    for (let i = 0; i < n; i++) {
+      const y0 = (i / n) * 2 * r, hh = (2 * r) / n;
+      const dx = g > 0 && hash(tf * 13 + i) < 0.4 * g ? (hash(tf * 7 + i) - 0.5) * 80 * g : 0;
+      c.drawImage(im, 0, (y0 / (2 * r)) * im.height, im.width, (hh / (2 * r)) * im.height, cx - r + dx, cy - r + y0, 2 * r, hh);
+    }
+    if (g > 0) {
+      c.globalCompositeOperation = 'lighter'; c.globalAlpha = alpha * 0.35 * g;
+      c.drawImage(im, cx - r + 10 * g, cy - r, 2 * r, 2 * r);
+    }
+    c.globalCompositeOperation = 'source-over'; c.globalAlpha = alpha * 0.18;
+    for (let y = cy - r; y < cy + r; y += 4) { c.fillStyle = '#000'; c.fillRect(cx - r, y, 2 * r, 2); }
+    c.restore();
+    c.globalAlpha = alpha; c.lineWidth = 3; c.strokeStyle = C.red;
+    c.beginPath(); c.arc(cx, cy, r + 6, 0, Math.PI * 2); c.stroke();
+    c.lineWidth = 2; c.strokeStyle = C.green; c.setLineDash([18, 10]); c.lineDashOffset = -t * 40;
+    c.beginPath(); c.arc(cx, cy, r + 16, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
+
   rect(x, y, w, h, color, alpha = 1) { const c = this.ctx; c.save(); c.globalAlpha = alpha; c.fillStyle = color; c.fillRect(x, y, w, h); c.restore(); }
   frame(x, y, w, h, color, lw = 2, alpha = 1) { const c = this.ctx; c.save(); c.globalAlpha = alpha; c.strokeStyle = color; c.lineWidth = lw; c.strokeRect(x, y, w, h); c.restore(); }
   // уголки-рамка «прицела»

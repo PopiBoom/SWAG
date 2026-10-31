@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { T, SLAM, BEAT, DURATION } from '../timeline.js';
+import { T, SLAM, BEAT, DURATION, MEMBERS } from '../timeline.js';
 import { C } from '../hud.js';
 import { clamp, smooth, pulse, win, easeOutBack, easeOutCubic, easeOutExpo, rng, hash, shake, stepNoise, noise1, scramble } from '../util.js';
 import { applyCam, canvasTex, screenMaterial, pointsMaterial } from '../util3d.js';
@@ -14,32 +14,32 @@ function drawScreen(t) {
   const { ctx: c } = scr; const W = 1024, H = 768;
   c.fillStyle = '#010401'; c.fillRect(0, 0, W, H);
   const on = clamp((t - T.monitor) / 0.6);
-  c.font = '34px MonoB';
+  c.font = '40px MonoB';
   REBOOT.forEach((l, i) => {
     const t0 = T.reboot[i]; if (t < t0) return;
-    const y = 150 + i * 70;
+    const y = 140 + i * 82;
     const n = Math.min(l.length, Math.floor((t - t0) * 40));
     const last = i === 3;
     c.fillStyle = last ? '#ffffff' : C.green;
     c.fillText('> ' + l.slice(0, n), 70, y);
     if (!last && t > t0 + 0.5) {
       const p = clamp((t - t0 - 0.5) / 0.8);
-      c.strokeStyle = C.green; c.lineWidth = 2; c.strokeRect(640, y - 26, 300, 28);
-      c.fillStyle = C.green; c.fillRect(644, y - 22, 292 * p, 20);
-      if (i === 2) { c.fillStyle = '#cfe'; c.font = '24px Mono'; c.fillText(`${Math.round(62 * p)}/62`, 860, y + 30); c.font = '34px MonoB'; }
+      c.strokeStyle = C.green; c.lineWidth = 2; c.strokeRect(668, y - 30, 290, 32);
+      c.fillStyle = C.green; c.fillRect(672, y - 26, 282 * p, 24);
+      if (i === 2) { c.fillStyle = '#cfe'; c.font = '24px Mono'; c.fillText(`${Math.round(62 * p)}/62`, 890, y + 34); c.font = '40px MonoB'; }
     }
   });
   if (t >= T.monTitle) {
     const k = t - T.monTitle;
     c.textAlign = 'center';
-    c.fillStyle = '#fff'; c.font = '56px Unb';
-    c.fillText(scramble('SWAG_ZOV_NEFOR.exe', clamp(1 - k / 0.5), Math.floor(t * 25)), W / 2, 560);
-    c.fillStyle = C.green; c.font = '26px Mono'; c.fillText('v∞ · ЧАТ КАНАЛА MEMENTO MORI', W / 2, 620);
+    c.fillStyle = '#fff'; c.font = '64px Unb';
+    c.fillText(scramble('SWAG_ZOV_NEFOR.exe', clamp(1 - k / 0.5), Math.floor(t * 25)), W / 2, 590);
+    c.fillStyle = C.green; c.font = '28px Mono'; c.fillText('v∞ · ЧАТ КАНАЛА MEMENTO MORI', W / 2, 650);
     c.textAlign = 'left';
   }
   if (Math.floor(t * 2.5) % 2 === 0 && t < T.monTitle) {
     const n = REBOOT.filter((_, i) => t >= T.reboot[i]).length;
-    c.fillStyle = C.green; c.fillRect(70, 120 + n * 70, 22, 34);
+    c.fillStyle = C.green; c.fillRect(70, 108 + n * 82, 24, 40);
   }
   // включение: точка → линия → кадр
   if (on < 1) {
@@ -91,7 +91,7 @@ export default {
     drawScreen(t);
     const post = t >= SLAM;
     const on = smooth(T.monitor, T.monitor + 0.6, t);
-    const dim = smooth(T.q1 - 0.3, T.q1 + 0.6, t) * 0.55;
+    const dim = smooth(T.q1 - 0.3, T.q1 + 0.6, t) * 0.75;
     scrMat.uniforms.time.value = t; scrMat.uniforms.gain.value = 1.3 * on * (1 - dim) * (t < T.monitor ? 0 : 1);
     scrMat.uniforms.flicker.value = 0.08;
     glow.intensity = 14 * on * (1 - dim); this.rim.intensity = 30 * smooth(85.5, 87.5, t);
@@ -110,10 +110,10 @@ export default {
       cam.fov = 60 + 15 * pulse(t, SLAM, 2); cam.updateProjectionMatrix();
     } else {
       const keys = [
-        { t: 84.67, p: [1.2, 0.5, 8.5], l: [0, 0, 0], roll: 0.03, fov: 40 },
-        { t: 90.0, p: [0.6, 0.2, 4.4], l: [0, 0.05, 0], roll: 0.01, fov: 40 },
-        { t: 95.0, p: [-0.4, 0.1, 3.4], l: [0, 0.05, 0], roll: -0.015, fov: 40 },
-        { t: 102.6, p: [0.15, 0.05, 2.6], l: [0, 0.05, 0], roll: 0.01, fov: 40 },
+        { t: 84.67, p: [1.0, 0.45, 7.0], l: [0, 0, 0], roll: 0.03, fov: 40 },
+        { t: 90.0, p: [0.45, 0.15, 3.2], l: [0, 0.05, 0], roll: 0.01, fov: 40 },
+        { t: 95.0, p: [-0.3, 0.08, 2.6], l: [0, 0.05, 0], roll: -0.015, fov: 40 },
+        { t: 102.6, p: [0.12, 0.05, 2.15], l: [0, 0.05, 0], roll: 0.01, fov: 40 },
         { t: SLAM, p: [0, 0.05, 1.2], l: [0, 0.05, 0], roll: 0, fov: 60 },
       ];
       applyCam(cam, keys, t, { dx: noise1(t * 0.3) * 0.05, dy: noise1(t * 0.25 + 5) * 0.03 });
@@ -155,6 +155,22 @@ export default {
         x += ww;
       });
     };
+    // фон под фразами: дрейфующие ники участников
+    const bgA = win(t, T.q1 - 0.4, T.q2End + 0.3, 0.6, 0.4);
+    if (bgA > 0) {
+      for (let row = 0; row < 9; row++) {
+        const y = 150 + row * 105, dir = row % 2 ? 1 : -1, sp = 40 + hash(row * 5) * 50;
+        let x = -400 + ((dir * (t - T.q1) * sp + hash(row) * 900) % 900 + 900) % 900 - 900;
+        let k = Math.floor(hash(row * 3) * MEMBERS.length);
+        while (x < 1920) {
+          const nm = MEMBERS[k++ % MEMBERS.length][0];
+          const red = hash(row * 31 + k) < 0.15;
+          h.text(nm, x, y, { font: 'MonoB', size: 30, color: red ? C.red : C.green, alpha: bgA * (Math.abs(y - 960) < 120 ? 0.06 : 0.16), track: 2 });
+          x += h.measure(nm, { font: 'MonoB', size: 30, track: 2 }) + 70;
+        }
+      }
+      h.rect(0, 850, 1920, 170, '#000', bgA * 0.75);
+    }
     phrase('МЫ НЕ СОЗДАВАЛИ ХАОС.', T.q1, T.q1End, 960, (i) => (i === 3 ? C.red : '#fff'));
     phrase('МЫ ПРОСТО ДАЛИ ЕМУ ГРУППОВОЙ ЧАТ.', T.q2, T.q2End, 960, (i) => (i >= 4 ? C.green : '#fff'));
     // название на весь экран
@@ -176,14 +192,22 @@ export default {
         h.text(shown.slice(0, a.length), x0, y, { font: 'TekM', size: 44, color: '#9aa69a', alpha: kk * (1 - endG), track: 6 });
         if (n > a.length) h.text(shown.slice(a.length), x0 + wa, y, { font: 'Tek', size: 44, color: col, alpha: kk * (1 - endG), track: 6, split: (1 - kk) * 8 });
       });
-      if (t >= T.memento) h.text('ЧАТ КАНАЛА MEMENTO MORI', 960, 940, { font: 'Mono', size: 24, align: 'center', track: 10, color: C.green, alpha: clamp((t - T.memento) / 0.4) * (1 - endG) * 0.9 });
+      if (t >= T.memento) {
+        const ma = clamp((t - T.memento) / 0.4) * (1 - endG);
+        const tw = h.measure('ЧАТ КАНАЛА MEMENTO MORI', { font: 'MonoB', size: 26, track: 10 });
+        h.avatar(t, 960 - tw / 2 - 30, 932, 34, ma, 0.3 + endG + pulse(t, T.memento, 6));
+        h.text('ЧАТ КАНАЛА MEMENTO MORI', 960 + 40, 942, { font: 'MonoB', size: 26, align: 'center', track: 10, color: C.green, alpha: ma * 0.95 });
+      }
       h.corners(80, 80, 1760, 920, 50, C.green, 3, (1 - endG) * clamp(k / 0.3) * 0.7);
       h.text(`REC ● ${(t - SLAM).toFixed(2)}`, 120, 140, { font: 'MonoB', size: 20, color: C.red, alpha: (1 - endG) * (Math.floor(t * 2) % 2 ? 1 : 0.4) });
     }
     if (t >= T.never && t < T.neverEnd + 0.3) {
       const a = win(t, T.never, T.neverEnd + 0.3, 0.3, 0.3);
       const s = 'THE SYSTEM WILL NEVER BE FIXED.';
-      h.text(s.slice(0, Math.floor((t - T.never) * 40)), 960, 548, { font: 'MonoB', size: 34, align: 'center', color: C.green, alpha: a, track: 8 });
+      const n = Math.floor((t - T.never) * 40);
+      h.text(s.slice(0, n), 960, 560, { font: 'Tek', size: 62, align: 'center', color: '#fff', alpha: a, track: 8, split: pulse(t, T.never + 0.8, 6) * 8 });
+      h.rect(960 - 520 * a, 610, 1040 * a, 3, C.green, a * 0.9);
+      h.text('// STATUS: PERMANENT', 960, 664, { font: 'Mono', size: 24, align: 'center', color: C.red, alpha: a * clamp((t - T.never - 0.8) / 0.3), track: 10 });
     }
     if (t >= T.credits) {
       const a = win(t, T.credits, DURATION, 0.5, 0.6);
@@ -197,11 +221,12 @@ export default {
         ['FONTS', ''],
         ['Unbounded · Dela Gothic One · Tektur · JetBrains Mono · Rubik Glitch', 'SIL OFL 1.1 · Google Fonts'],
       ];
+      h.avatar(t, 960, 175, 92, a, 0.15);
       L.forEach(([l, r2], i) => {
-        const y = 330 + i * 56;
+        const y = 352 + i * 56;
         const head = r2 === '';
         h.text(l, 960, y, { font: head ? 'Tek' : 'Mono', size: head ? 26 : 24, align: 'center', color: head ? C.green : '#ddd', alpha: a, track: head ? 8 : 1 });
-        if (!head) h.text(r2, 960, y + 24, { font: 'Mono', size: 16, align: 'center', color: '#777', alpha: a, track: 1 });
+        if (!head) h.text(r2, 960, y + 24, { font: 'Mono', size: 17, align: 'center', color: '#8f8f8f', alpha: a, track: 1 });
       });
     }
   },

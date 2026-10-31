@@ -12,9 +12,10 @@ const START = [0, 30, 60];
 let shards, shardMat, towersMats = [], towerMeshes = [], bldg = [], bubbles = [], bolts, sparks, words = [], tower, towerMat, towerName, towerNameMat, crowd, pixels, pixMat, ringB, ringMeshes = [];
 
 const EXTRA = [
-  ['анон', 'пруфы будут?'], ['ZOV_93', 'это база'], ['nefor13', 'кринж'], ['user_404', 'ты кто вообще'], ['Сеня АйТи', 'слился'],
-  ['KAPUSTKA', 'иди нахуй'], ['Даша Вкид', 'ору'], ['t9ctox7c', 'это фейк'], ['Вася', 'докажи'], ['Ева', 'лол'], ['memento', 'ну и бред'],
-  ['cold#inte2(t#o)', 'ты не прав'], ['анон', 'политота пошла'], ['swag', 'мем дня'], ['ERR', 'бан? какой бан'],
+  ['Death', 'пруфы будут?'], ['BunkerRP', 'это база'], ['heckuн', 'кринж'], ['kevin', 'ты кто вообще'], ['Сеня айТи', 'слился'],
+  ['kapustka [Бледный]', 'иди нахуй'], ['Даша вкид', 'ору'], ['t9ctox7c', 'это фейк'], ['Вася Флеш', 'докажи'], ['ева', 'лол'], ['Ведьма', 'ну и бред'],
+  ['cold#inte2(t#o)', 'ты не прав'], ['Антон Дуброн', 'политота пошла'], ['Арина (свэг шмот)', 'мем дня'], ['True Mafia', 'бан? какой бан'],
+  ['birds of Hiroshima', 'бахнем'], ['Sharpilov', 'база'], ['puato4ka', 'ахахах'], ['Ян Брагин', 'душнила'], ['Celestiana', 'фу'],
 ];
 
 const shardVert = `
@@ -310,10 +311,10 @@ export default {
     const collapse = smooth(T.collapse, T.blackout - 0.4, t);
     const end = smooth(T.blackout - 0.25, T.blackout, t);
     return {
-      flash: pulse(t, DROP, 14) * 0.35 + wp * 0.12,
+      flash: pulse(t, DROP, 14) * 0.18 + wp * 0.1, flashCol: t < DROP + 0.4 ? [0.45, 1, 0.35] : [1, 1, 1],
       ca: 0.4 + wp * 1.5 + drop * 1.2 + warn * 0.8 + end * 3, glitch: wp * 0.35 + drop * 0.5 + warn * 0.35 * (stepNoise(t, 12, 9) > 0.5 ? 1 : 0.2) + end,
       rgbSplit: wp * 0.6 + warn * 0.5 + end, tear: warn * 0.6, noiseAmt: 0.25 + warn * 0.4, redFlash: pulse(t, T.warning, 4) * 0.5,
-      radial: drop * 0.45 + wp * 0.3 + 0.04, samples: 3, shutter: 0.5,
+      radial: drop * 0.3 + wp * 0.3 + 0.04, samples: 3, shutter: 0.5,
       dof: 0.2, focus: 60, focusRange: 60, bloom: 1.25, bloomThreshold: 0.38, vig: 0.8, exposure: 1.15,
       pixelate: collapse * collapse * 0.25 * (stepNoise(t, 8, 3) > 0.6 ? 1 : 0.3) + end * 0.5,
     };

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SCENES, DURATION, FPS } from './timeline.js';
-import { HUD } from './hud.js';
+import { HUD, loadMemento } from './hud.js';
 import scene1 from './scenes/s1_file.js';
 import scene2 from './scenes/s2_room.js';
 import scene3 from './scenes/s3_network.js';
@@ -48,14 +48,14 @@ void main(){
   c += texture2D(tBloom, vUv).rgb * bloomAmt;
   c *= exposure * tint;
   vec4 h = texture2D(tHud, vUv);
-  c = c * (1.0 - h.a * hudAlpha) + h.rgb * hudAlpha;
+  c = c * (1.0 - h.a * hudAlpha) + h.rgb * h.a * hudAlpha;
   gl_FragColor = vec4(c, 1.0);
 }`;
 
 // Финальные эффекты: глитч-смещение, CA, радиальный blur, VHS, шум, виньетка
 const FX_FRAG = `
-uniform sampler2D tComp, tHudBloom; uniform float time, ca, glitch, tear, noiseAmt, scan, vig, grain, radial, flash, fade, rgbSplit, hudGlow, curve, staticAmt, redFlash, pixelate;
-uniform vec2 radialCenter; varying vec2 vUv;
+uniform sampler2D tComp, tHudBloom; uniform float time, ca, glitch, tear, noiseAmt, scan, vig, grain, radial, flash, fade, rgbSplit, hudGlow, curve, staticAmt, redFlash, pixelate, grade;
+uniform vec2 radialCenter; uniform vec3 flashCol; varying vec2 vUv;
 float h11(float p){ return fract(sin(p * 127.1) * 43758.5453); }
 float h21(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 vec3 sampleCA(vec2 uv, float amt){
@@ -104,18 +104,28 @@ void main(){
   float bandY = fract(time * 0.21);
   col += noiseAmt * smoothstep(0.03, 0.0, abs(uv.y - bandY)) * (h21(uv * 900.0 + tf) - 0.3) * 0.18;
   col += noiseAmt * (h21(vec2(uv.y * 400.0, tf)) - 0.5) * 0.08;
+  // грейдинг: мягкое плечо светов, насыщенность, S-кривая, холодно-зелёные тени
+  if(grade > 0.0){
+    vec3 g = col;
+    vec3 hi = max(g - 0.72, 0.0); g = min(g, 0.72) + 0.28 * (1.0 - exp(-hi / 0.28));
+    float l = dot(g, vec3(0.2126, 0.7152, 0.0722));
+    g = mix(vec3(l), g, 1.18);
+    g = max(g, 0.0); g = g * g * (3.0 - 2.0 * g) * 0.35 + g * 0.65;
+    g += vec3(0.0, 0.012, 0.008) * (1.0 - smoothstep(0.0, 0.25, l));
+    col = mix(col, g, grade);
+  }
   // виньетка
   vec2 vv = vUv - 0.5; col *= 1.0 - vig * smoothstep(0.25, 0.85, length(vv * vec2(1.25, 1.0)));
   if(curve > 0.0 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) col = vec3(0.0);
-  col = mix(col, vec3(1.0), flash);
+  col = mix(col, flashCol, flash);
   col = mix(col, vec3(1.0, 0.0, 0.2), redFlash * 0.6);
   col *= 1.0 - fade;
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
 export const DEFAULT_FX = {
-  ca: 0.15, glitch: 0, tear: 0, noiseAmt: 0.15, scan: 0.25, vig: 0.65, grain: 0.05, radial: 0,
-  radialCenter: [0.5, 0.5], flash: 0, fade: 0, rgbSplit: 0, hudGlow: 1.1, curve: 0, staticAmt: 0, redFlash: 0, pixelate: 0,
+  ca: 0.15, glitch: 0, tear: 0, noiseAmt: 0.15, scan: 0.25, vig: 0.65, grain: 0.065, radial: 0,
+  radialCenter: [0.5, 0.5], flash: 0, fade: 0, rgbSplit: 0, hudGlow: 1.1, curve: 0, staticAmt: 0, redFlash: 0, pixelate: 0, grade: 1, flashCol: [1, 1, 1],
   bloom: 0.9, bloomThreshold: 0.45, dof: 0, focus: 10, focusRange: 8, exposure: 1, tint: [1, 1, 1], hudAlpha: 1,
   samples: 1, shutter: 0.5,
 };
@@ -151,8 +161,8 @@ class Engine {
         bloomAmt: { value: 1 }, hudAlpha: { value: 1 }, exposure: { value: 1 }, tint: { value: new THREE.Vector3(1, 1, 1) },
       },
     });
-    const fxU = { tComp: { value: this.rtComp.texture }, tHudBloom: { value: this.rtHudB.texture }, time: { value: 0 }, radialCenter: { value: new THREE.Vector2(0.5, 0.5) } };
-    for (const k of ['ca', 'glitch', 'tear', 'noiseAmt', 'scan', 'vig', 'grain', 'radial', 'flash', 'fade', 'rgbSplit', 'hudGlow', 'curve', 'staticAmt', 'redFlash', 'pixelate']) fxU[k] = { value: 0 };
+    const fxU = { tComp: { value: this.rtComp.texture }, tHudBloom: { value: this.rtHudB.texture }, time: { value: 0 }, radialCenter: { value: new THREE.Vector2(0.5, 0.5) }, flashCol: { value: new THREE.Vector3(1, 1, 1) } };
+    for (const k of ['ca', 'glitch', 'tear', 'noiseAmt', 'scan', 'vig', 'grain', 'radial', 'flash', 'fade', 'rgbSplit', 'hudGlow', 'curve', 'staticAmt', 'redFlash', 'pixelate', 'grade']) fxU[k] = { value: 0 };
     this.fxMat = new THREE.ShaderMaterial({ vertexShader: FS_VERT, fragmentShader: FX_FRAG, uniforms: fxU, depthTest: false, depthWrite: false });
     this.hud = new HUD(W, H);
     this.hudTex = new THREE.CanvasTexture(this.hud.canvas);
@@ -212,8 +222,8 @@ class Engine {
     this.pass(this.compMat, this.rtComp);
     const fu = this.fxMat.uniforms;
     fu.time.value = t;
-    for (const k of ['ca', 'glitch', 'tear', 'noiseAmt', 'scan', 'vig', 'grain', 'radial', 'flash', 'fade', 'rgbSplit', 'hudGlow', 'curve', 'staticAmt', 'redFlash', 'pixelate']) fu[k].value = fx[k];
-    fu.radialCenter.value.set(...fx.radialCenter);
+    for (const k of ['ca', 'glitch', 'tear', 'noiseAmt', 'scan', 'vig', 'grain', 'radial', 'flash', 'fade', 'rgbSplit', 'hudGlow', 'curve', 'staticAmt', 'redFlash', 'pixelate', 'grade']) fu[k].value = fx[k];
+    fu.radialCenter.value.set(...fx.radialCenter); fu.flashCol.value.set(...fx.flashCol);
     this.pass(this.fxMat, null);
   }
 }
@@ -226,7 +236,7 @@ async function loadFonts() {
 }
 
 export async function boot(canvas) {
-  await loadFonts();
+  await Promise.all([loadFonts(), loadMemento()]);
   const engine = new Engine(canvas);
   const mods = [scene1, scene2, scene3, scene4, scene5, scene6];
   const ctx = { THREE, renderer: engine.r, W, H };

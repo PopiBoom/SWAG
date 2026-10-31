@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { T, MESSAGES } from '../timeline.js';
-import { C, drawMask } from '../hud.js';
+import { T, MESSAGES, MEMBERS } from '../timeline.js';
+import { C, drawMask, MEMENTO } from '../hud.js';
 import { clamp, smooth, pulse, win, easeOutBack, easeOutCubic, rng, hash, shake, scramble, stepNoise, noise1 } from '../util.js';
 import { applyCam, canvasTex, screenMaterial, holoMaterial, beamMaterial, pointsMaterial } from '../util3d.js';
 import { ledTex, maskTex, noiseTex } from '../textures.js';
@@ -10,7 +10,7 @@ const cam = new THREE.PerspectiveCamera(55, 16 / 9, 0.03, 80);
 let chat, chatMat, ledMats = [], roomLight, screenLight, lampLight, beam, beamMat, holos = [], holoLines, staticMats = [], dust, redLight;
 
 const SCR = { x: 0, y: 1.5, z: -6.12, w: 1.6, h: 1.0 };
-const JOIN = ['KAPUSTKA', 'Даша Вкид', 't9ctox7c', 'cold#inte2(t#o)'];
+const JOIN = ['kapustka [Бледный]', 'Даша вкид', 'Сеня айТи', 'Вася Флеш', 'cold#inte2(t#o)', 'ева', 'Death', 'Арина (свэг шмот)'];
 const MSG_T = [22.6, 23.25, 23.9, 24.55, 25.2, 25.85, 26.5];
 const membersAt = (t) => Math.round(3 + 59 * smooth(21.6, 26.6, t));
 
@@ -33,7 +33,11 @@ function drawChat(t) {
   chats.forEach(([n, last, seed, sel], i) => {
     const y = 80 + i * 86;
     if (sel) { c.fillStyle = 'rgba(57,255,20,0.14)'; c.fillRect(0, y, 340, 86); c.fillStyle = C.green; c.fillRect(0, y, 4, 86); }
-    drawMask(c, 48, y + 43, 56, seed, { color: sel ? C.green : '#2c6b1c' });
+    if (i === 1 && MEMENTO.length) {
+      c.save(); c.beginPath(); c.arc(48, y + 43, 28, 0, Math.PI * 2); c.clip();
+      c.drawImage(MEMENTO[Math.floor(t * 15) % MEMENTO.length], 20, y + 15, 56, 56); c.restore();
+      c.strokeStyle = C.red; c.lineWidth = 2; c.beginPath(); c.arc(48, y + 43, 29, 0, Math.PI * 2); c.stroke();
+    } else drawMask(c, 48, y + 43, 56, seed, { color: sel ? C.green : '#2c6b1c' });
     c.fillStyle = sel ? '#fff' : '#bbb'; c.font = '21px MonoB'; c.fillText(n, 88, y + 36);
     c.fillStyle = '#6c776c'; c.font = '18px Mono'; c.fillText(last.slice(0, 24), 88, y + 64);
     const unread = sel ? Math.max(0, Math.floor(smooth(22, 31, t) * 999)) : (i === 1 ? 3 : 0);
@@ -168,7 +172,7 @@ export default {
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.6, metalness: 0.3 });
     for (let i = 0; i < 26; i++) {
       const side = r() > 0.5 ? 1 : -1, z0 = 9 - r() * 22;
-      const pts = [new THREE.Vector3(side * 3.4, 4.2, z0), new THREE.Vector3(side * (2.6 - r() * 2), 2.6 + r() * 1.2, z0 - 0.5 - r()), new THREE.Vector3((r() - 0.5) * 3, r() < 0.5 ? 0.03 : 3.0 + r(), z0 - 1.5 - r() * 2), new THREE.Vector3(-side * (1 + r() * 2), 0.03, z0 - 3 - r() * 2)];
+      const pts = [new THREE.Vector3(side * 3.4, 4.2, z0), new THREE.Vector3(side * (3.1 - r() * 0.5), 2.6 + r() * 1.2, z0 - 0.5 - r()), new THREE.Vector3((r() - 0.5) * 3, r() < 0.6 ? 0.03 : 3.7 + r() * 0.4, z0 - 1.5 - r() * 2), new THREE.Vector3(-side * (1 + r() * 2), 0.03, z0 - 3 - r() * 2)];
       scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.022 + r() * 0.02, 6), cableMat));
     }
     // стол и рабочий компьютер
@@ -187,7 +191,7 @@ export default {
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(SCR.w, SCR.h), chatMat); scr.position.set(SCR.x, SCR.y, SCR.z); scene.add(scr);
     // свет
     scene.add(new THREE.AmbientLight(0x1a221a, 2.2)); const hemi = new THREE.HemisphereLight(0x2a3a2a, 0x050505, 1.2); scene.add(hemi);
-    for (const z of [6, 0, -11]) { const fl = new THREE.PointLight(0x6aff4a, 4, 9, 1.6); fl.position.set(0, 3.8, z); scene.add(fl); }
+    for (const z of [6, 0, -11]) { const fl = new THREE.PointLight(0x6aff4a, 7, 11, 1.5); fl.position.set(0, 3.8, z); scene.add(fl); }
     screenLight = new THREE.PointLight(0x7dff6a, 6, 7, 1.6); screenLight.position.set(0, 1.5, -5.4); scene.add(screenLight);
     lampLight = new THREE.SpotLight(0xd8ffd0, 70, 10, 0.5, 0.6, 1.4); lampLight.position.set(0, 4.15, -5.6); lampLight.target.position.set(0, 0.8, -6.1); scene.add(lampLight, lampLight.target);
     roomLight = new THREE.PointLight(0x39ff14, 3, 12, 1.8); roomLight.position.set(0, 3.6, 2); scene.add(roomLight);
@@ -202,7 +206,7 @@ export default {
     const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(dp, 3)); dg.setAttribute('aSize', new THREE.BufferAttribute(ds, 1)); dg.setAttribute('aColor', new THREE.BufferAttribute(dc, 3));
     dust = new THREE.Points(dg, pointsMaterial({ size: 0.035, opacity: 0.6 })); scene.add(dust);
     // голограммы участников
-    const extra = [['nefor_' + 13, 131], ['ZOV', 141], ['анон', 151], ['???', 161], ['user_404', 171], ['swag', 181], ['ERR', 191], ['memento', 201]];
+    const extra = ['Death', 'Арина (свэг шмот)', 'Ведьма', 'kevin', 'Sharpilov', 'BunkerRP', 'True Mafia', 'puato4ka'].map((n, i) => [n, 131 + i * 10]);
     const list = [...MESSAGES.map((m) => [m.name, m.seed]), ...extra];
     list.forEach(([name, seed], i) => {
       const g = new THREE.Group();
@@ -286,7 +290,7 @@ export default {
       tear: err * 0.4, rgbSplit: err * 0.4, redFlash: pulse(t, T.pcErrors, 5) * 0.3,
       radial: dive * 0.9, samples: dive > 0.1 ? 4 : 1, shutter: 0.7,
       dof: t > 22 && t < 27 ? 0.85 : 0.55, focus: t > 22.5 && t < 27 ? 1.9 : t < 22.5 ? 9 : 4.0, focusRange: t > 22.5 && t < 27 ? 1.0 : 4,
-      bloom: 1.1, bloomThreshold: 0.4, noiseAmt: 0.2, scan: 0.25, vig: 0.8, exposure: 1.35,
+      bloom: 1.1, bloomThreshold: 0.4, noiseAmt: 0.2, scan: 0.25, vig: 0.75, exposure: 1.5,
       flash: smooth(35.0, 35.2, t) * 0.2,
     };
   },

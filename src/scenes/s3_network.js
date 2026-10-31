@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { T, MESSAGES } from '../timeline.js';
+import { T, MESSAGES, MEMBERS } from '../timeline.js';
 import { C } from '../hud.js';
 import { clamp, smooth, pulse, win, easeOutBack, easeOutCubic, easeOutExpo, rng, hash, shake, stepNoise, noise1, scramble } from '../util.js';
 import { applyCam, canvasTex, holoMaterial, pointsMaterial } from '../util3d.js';
@@ -54,6 +54,15 @@ export default {
         const { ctx: c, tex } = canvasTex(512, 80); c.font = '42px MonoB'; c.textAlign = 'center'; c.fillStyle = '#fff'; c.fillText(names[i].name, 256, 56);
         const lm = holoMaterial(tex, [0.6, 1, 0.5]);
         const l = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.25), lm); l.position.y = -0.85; m.add(l); m.userData.lm = lm;
+      } else {
+        // остальные — реальные ники участников (мелко, с плашкой-ролью)
+        const [nm, role] = MEMBERS[(i - names.length) % MEMBERS.length];
+        const { ctx: c, tex } = canvasTex(512, 112); c.textAlign = 'center';
+        let fs = 44; c.font = `${fs}px MonoB`; while (c.measureText(nm).width > 496 && fs > 20) { fs -= 2; c.font = `${fs}px MonoB`; }
+        c.fillStyle = red ? '#ffb3c0' : '#e8ffe0'; c.fillText(nm, 256, 50);
+        if (role) { c.font = '32px Mono'; c.fillStyle = red ? '#ff5577' : '#7dff6a'; c.fillText(role, 256, 96); }
+        const lm = holoMaterial(tex, red ? [1, 0.4, 0.5] : [0.6, 1, 0.5]);
+        const l = new THREE.Mesh(new THREE.PlaneGeometry(s * 1.9, s * 1.9 * 112 / 512), lm); l.position.y = -s * 0.78; m.add(l); m.userData.lm = lm;
       }
       nodes.push(m); scene.add(m);
     }
@@ -124,7 +133,7 @@ export default {
       m.visible = appear > 0;
       const a = clamp(appear * 2) * (1 - 0.6 * chaos * (stepNoise(t, 12, i) > 0.8 ? 1 : 0));
       mat.uniforms.opacity.value = a; mat.uniforms.time.value = t; mat.uniforms.glitch.value = 0.1 + chaos;
-      if (lm) { lm.uniforms.opacity.value = a; lm.uniforms.time.value = t; }
+      if (lm) { lm.uniforms.opacity.value = a * (m.userData.named ? 1 : 0.8); lm.uniforms.time.value = t; }
     });
     // связи
     const pos = lines.geometry.attributes.position.array, col = lines.geometry.attributes.color.array;
@@ -213,6 +222,21 @@ export default {
       const crit = k > 1.3;
       row('CHAOS LEVEL:', crit ? 'CRITICAL' : scramble('CRITICAL', 1 - clamp((k - 0.8) / 0.5), Math.floor(t * 20)), y + 260, C.red, 0.8);
       if (crit && Math.floor(t * 4) % 2 === 0) h.frame(x - 14, y + 200, 600, 80, C.red, 3, a);
+      // справа — лог сканирования: реальные ники и плашки
+      const rx = 1330, ry = 220, rw = 500, rows = 13, lh = 44;
+      h.rect(rx - 24, ry - 60, rw + 48, rows * lh + 90, '#000', 0.55 * a);
+      h.corners(rx - 24, ry - 60, rw + 48, rows * lh + 90, 26, C.green, 2, a);
+      h.text('// USERS FOUND', rx, ry - 20, { font: 'MonoB', size: 20, color: C.green, alpha: a, track: 4 });
+      h.text(`${Math.min(62, Math.round(62 * k / 4.3))}/62`, rx + rw, ry - 20, { font: 'MonoB', size: 20, align: 'right', color: '#cfe', alpha: a, track: 2 });
+      const shown = Math.floor(k * 8);
+      for (let j = 0; j < rows; j++) {
+        const idx = shown - rows + j; if (idx < 0) continue;
+        const [nm, role] = MEMBERS[idx % MEMBERS.length];
+        const fresh = j === rows - 1, yy = ry + 30 + j * lh;
+        const aa = a * (0.35 + 0.65 * (j / (rows - 1)));
+        h.text('> ' + (fresh ? scramble(nm, 0.5, Math.floor(t * 30)) : nm), rx, yy, { font: 'MonoB', size: 24, color: fresh ? '#fff' : '#d8ffd0', alpha: aa });
+        if (role) h.text(role, rx + rw, yy, { font: 'Mono', size: 20, align: 'right', color: hash(idx * 7) < 0.3 ? C.red : C.green, alpha: aa * 0.9 });
+      }
       // выноска к проекции центра сети
       const v = new THREE.Vector3(0, 0, 0).project(camera);
       if (v.z < 1) {

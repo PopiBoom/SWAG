@@ -299,7 +299,9 @@ export default {
     }
     if (t >= 15.5) {
       const a = clamp((t - 15.5) / 0.3) * (1 - smooth(16.9, 17.4, t));
-      h.text('// ЧАТ КАНАЛА MEMENTO MORI', 960, 770, { font: 'Mono', size: 22, align: 'center', track: 6, color: C.green, alpha: a * 0.85 });
+      const tw = h.measure('// ЧАТ КАНАЛА MEMENTO MORI', { font: 'Mono', size: 24, track: 6 });
+      h.avatar(t, 960 - tw / 2 - 18, 790, 30, a, 0.2 + pulse(t, 15.5, 6) * 1.5);
+      h.text('// ЧАТ КАНАЛА MEMENTO MORI', 960 + 26, 798, { font: 'Mono', size: 24, align: 'center', track: 6, color: C.green, alpha: a * 0.9 });
     }
     if (t >= T.errors && t < T.title - 1.25) {
       // красные индикаторы по краям
