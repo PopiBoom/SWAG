@@ -1,0 +1,23 @@
+{
+  "name": "swag",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PopiBoom/SWAG.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PopiBoom/SWAG/issues"
+  },
+  "homepage": "https://github.com/PopiBoom/SWAG#readme",
+  "dependencies": {
+    "three": "^0.169.0"
+  }
+}

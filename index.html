@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MEMENTO MORI — чат от KAPUSTKA</title>
+<style>
+  @font-face { font-family: "Unbounded"; src: url(assets/fonts/Unbounded.ttf) format("truetype"); font-weight: 200 900; }
+  @font-face { font-family: "Dela Gothic One"; src: url(assets/fonts/DelaGothicOne.ttf) format("truetype"); }
+  @font-face { font-family: "JetBrains Mono"; src: url(assets/fonts/JetBrainsMono.ttf) format("truetype"); font-weight: 100 800; }
+  @font-face { font-family: "Press Start 2P"; src: url(assets/fonts/PressStart2P.ttf) format("truetype"); }
+  @font-face { font-family: "Rubik Glitch"; src: url(assets/fonts/RubikGlitch.ttf) format("truetype"); }
+  @font-face { font-family: "Roboto"; src: url(assets/fonts/Roboto.ttf) format("truetype"); font-weight: 100 900; }
+  @font-face { font-family: "Noto Sans KR"; src: url(assets/fonts/NotoSansKR.ttf) format("truetype"); font-weight: 100 900; }
+  @font-face { font-family: "Russo One"; src: url(assets/fonts/RussoOne.ttf) format("truetype"); }
+  @font-face { font-family: "Oswald"; src: url(assets/fonts/Oswald.ttf) format("truetype"); font-weight: 200 700; }
+  html, body { margin: 0; background: #000; height: 100%; overflow: hidden; }
+  #stage { height: 100%; display: flex; align-items: center; justify-content: center; }
+  #view { height: 100%; width: auto; aspect-ratio: 9 / 16; display: block; }
+  .play { position: fixed; inset: auto 0 40px 0; margin: auto; width: 220px; padding: 16px; font: 700 20px monospace; background: #39ff88; border: 0; cursor: pointer; }
+</style>
+<script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }</script>
+</head>
+<body>
+<div id="stage"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
