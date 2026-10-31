@@ -1,0 +1,10 @@
+import boot from './boot.js';
+import logo from './logo.js';
+import { senya, death, anton } from './legends.js';
+import { admin, kapustka } from './admin.js';
+import { dasha, danya, vasya, scalpel } from './chaos.js';
+import { parade } from './parade.js';
+import { stats } from './stats.js';
+import { members, climax } from './universe.js';
+import { finale } from './finale.js';
+export const SCENE_LIST = [boot, logo, senya, death, anton, admin, kapustka, dasha, danya, vasya, scalpel, parade, stats, members, climax, finale];
