@@ -14,3 +14,4 @@ assets/sfx/src/static11.wav
 tools/bench.*
 out/soundtrack.wav
 out/*.mp4
+out/old/
