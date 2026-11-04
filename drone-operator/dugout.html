@@ -6,11 +6,8 @@
 <title>Dugout Launch</title>
 <style>
   html, body { margin: 0; height: 100%; background: #08080a; overflow: hidden; }
-  canvas {
-    display: block; position: fixed; left: 0; top: 0;
-    width: 100vw; height: 100vh;
-    image-rendering: pixelated; image-rendering: crisp-edges;
-  }
+  canvas { display: block; position: fixed; left: 0; top: 0; width: 100vw; height: 100vh;
+           image-rendering: pixelated; image-rendering: crisp-edges; }
 </style>
 </head>
 <body>
@@ -18,19 +15,18 @@
 <script>
 (function () {
 'use strict';
-
 /* =====================================================================
-   DUGOUT LAUNCH — side-view cutaway pixel animation, 192x108 logical
-   (x10 = 1920x1080). The operator carries a Mavic out of the dugout,
-   launches it, watches the thermal feed, lands it, fetches it and puts
-   it back on the table. Seamless loop with procedural music + SFX.
-   Browsers block autoplay audio: sound starts on the first click.
-   #capture in the URL enables frame-exact video/audio export hooks.
+   DUGOUT LAUNCH v4 — 480x270 pixel grid (x4 = 1920x1080), vertical
+   270x480 (x4 = 1080x1920). A camouflaged earth dugout in cutaway: the
+   operator prepares a Mavic, launches it, watches the thermal feed,
+   lands it, fetches it and stows it again. Seamless loop, procedural
+   music + SFX (sound starts on the first click; browsers block autoplay).
+   URL hash #capture / #capture-v enables frame-exact export hooks.
    ===================================================================== */
-
-var W = 192, H = 108, M = 1;
-var WW = 320, WH = 150;
-var SURF = 64, FLOOR = 124;
+var VERT = location.hash === '#capture-v' || location.hash === '#vertical';
+var CAPTURE = location.hash.indexOf('#capture') === 0;
+var W = VERT ? 270 : 480, H = VERT ? 480 : 270, M = 2;
+var WW = 820, WH = 420, SURF = 200, FLOOR = 350;
 
 /* ---------------- Palette ---------------- */
 var PAL = [
@@ -39,26 +35,37 @@ var PAL = [
   '#586039','#7a7150','#4b4731','#2c2116','#08080a','#1e2125','#373b41','#60666e',
   '#8095bb','#8c6a50','#2b5d3b','#7be596','#ea3328','#561916','#3fe266','#194523',
   '#f2f3ec','#2d52b8','#6b6352','#150e08','#271a10','#3b2a1a','#43301e','#6b4a2b',
-  '#a8763c','#f6d27e',
-  '#0b0b0b','#262626','#424242','#6a6a6a','#a4a4a4','#ededed'   // thermal greys (white-hot)
+  '#a8763c','#f6d27e','#0b0b0b','#262626','#424242','#6a6a6a','#a4a4a4','#ededed',
+  '#171b10','#2f2a1a','#463d26','#1f2016','#33321f','#4a3826','#6b5238','#3f2c20',
+  '#5e4534','#b08a6a','#c9d2e0','#7f8aa0','#5a1e0c','#c4511c','#ffb347','#2c2234',
+  '#6a3a2c','#d98a4a','#e0a020','#8c2418','#0d1830','#46602e'
 ];
 var SKY0=0,SKY1=1,SKY2=2,SKY3=3,CLDL=4,MOON=5,MOONS=6,TREE=7,HILL=8,GND0=9,GND1=10,GND2=11,
     GRS0=12,GRS1=13,OL0=14,OL1=15,OL2=16,KHA=17,KHD=18,BRN0=19,BLK=20,GR0=21,GR1=22,GR2=23,
     RIM=24,SKIN=25,GLW0=26,GLW1=27,RED=28,REDD=29,GRN=30,GRND=31,WHT=32,BLU=33,DST0=34,
     SOIL0=35,SOIL1=36,SOIL2=37,WOOD0=38,WOOD1=39,WARM=40,LAMP=41,
-    TH0=42,TH1=43,TH2=44,TH3=45,TH4=46,TH5=47;
+    TH0=42,TH1=43,TH2=44,TH3=45,TH4=46,TH5=47,
+    CL0=48,CB1=49,CB2=50,VS0=51,VS1=52,BR1=53,BR2=54,SK0=55,SK1=56,SK3=57,SNOW=58,SNOWD=59,
+    FIRE0=60,FIRE1=61,FIRE2=62,FLH0=63,FLH1=64,FLH2=65,AMB=66,REDM=67,WATR=68,GRS2=69;
+var PU = new Uint32Array(PAL.length);
+for (var pi = 0; pi < PAL.length; pi++) {
+  var hx = PAL[pi];
+  PU[pi] = (0xff000000 | (parseInt(hx.substr(5, 2), 16) << 16) | (parseInt(hx.substr(3, 2), 16) << 8) | parseInt(hx.substr(1, 2), 16)) >>> 0;
+}
+// 4-tone material ramps: deep, shadow, mid, light
+var R_CLOTH=0,R_CAMOD=1,R_CAMOB=2,R_VEST=3,R_BOOT=4,R_GLOVE=5,R_BALA=6,R_SKIN=7,R_METAL=8,R_KNIT=9,R_BAG=10,R_PONCHO=11;
+var RAMPS = new Uint8Array([
+  CL0,OL0,OL1,OL2,  CL0,CL0,OL0,OL1,  CL0,CB1,CB2,KHD,  VS0,VS1,KHD,KHA,  BLK,BRN0,BR1,BR2,
+  BLK,GR0,GR1,GR2,  BLK,GR0,GR0,GR1,  SK0,SK1,SKIN,SK3, BLK,GR0,GR1,GR2,  BLK,VS0,VS1,KHD,
+  CL0,OL0,OL1,OL2,  CL0,OL0,KHD,OL2
+]);
 
-/* ---------------- Canvases ---------------- */
+/* ---------------- Canvases + helpers ---------------- */
 function mk(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 var disp = document.getElementById('c');
 var dctx = disp.getContext('2d', { alpha: false });
 var off = mk(W + 2 * M, H + 2 * M), octx = off.getContext('2d');
-var SKW = 208, SKH = 124, TRW = 248;
-var skyC = mk(SKW, SKH), treeC = mk(TRW, WH), worldC = mk(WW, WH);
-var FMW = 240, FMH = 460, fpvC = mk(FMW, FMH);
-var g = null;
-
-var FORCE = -1, RIMC = RIM;
+var g = null, FORCE = -1;
 function rect(x, y, w, h, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, w, h); }
 function px(x, y, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, 1, 1); }
 function lineP(x0, y0, x1, y1, c) {
@@ -66,16 +73,16 @@ function lineP(x0, y0, x1, y1, c) {
   if (n === 0) { px(x0, y0, c); return; }
   for (var i = 0; i <= n; i++) px(x0 + Math.round(dx * i / n), y0 + Math.round(dy * i / n), c);
 }
-
 var seed = 0x2f6b9e31 | 0;
 function rnd() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; }
 function hash(x, y) {
-  var h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  var h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
 function ease(u) { return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
 function vnoise(x, y, sx, sy, s) {
   var fx = x / sx, fy = y / sy, ix = Math.floor(fx), iy = Math.floor(fy);
   var ux = ease(fx - ix), uy = ease(fy - iy);
@@ -85,91 +92,18 @@ function vnoise(x, y, sx, sy, s) {
 var BAYER4 = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
 function bay(x, y) { return BAYER4[((y & 3) << 2) | (x & 3)]; }
 
-/* =====================================================================
-   SPRITE PARTS
-   ===================================================================== */
-var CH = { K:BLK, '0':OL0, '1':OL1, '2':OL2, v:KHD, V:KHA, d:BRN0, g:GR0, G:GR1, H:GR2,
-           m:RIM, s:SKIN, w:WHT, u:BLU, r:RED };
-var HEAD = [
-  "...mm22...", "..m2112122", ".m21112111", ".m112111GG", "m11111111G", "m001111110",
-  ".K0000000K", ".GGgggssss", ".GHggggggg", "..Gggggggg", "...ggggg.."
-];
-var TORSO = [
-  "...mm111112...", "..m1d1111111d.", "..m1dvvvvvvvd.", ".m11vVVVVVVVv.", ".m01vdvdvdvdv.",
-  ".001vvvvvvvvv.", ".001vVVdVVdVV.", ".000vvvdvvdvv.", ".000vvvdvvdvv.", "..00vvvvvvvvv.",
-  "..0KKKKVKKKKK.", "..011101110110"
-];
-var LEG  = [ "1111.", "1111.", "1111.", "1111.", "GHG1.", "1111.", "1111.", "0111.", "dvdd.", "ddddd", "KKKKK" ];
-var LEGK = [ "1111..", "11111.", ".11111", "..GHG1", "..1111", ".1111.", "0111..", "dvdd..", "ddddd.", "KKKKK." ];
-var LEGH = [ "11111.", ".11111", "..GHG1", "..1111", ".1111.", ".0111.", "dvddd.", "KKKKK." ];
-var KNEEL = [ "..111111111111..", "..1111111111111.", "..0111.....1111.", "..GHG0.....dvdd.", "Kdd000.....KKKKK" ];
-var SIT = [ "..11111111111...", "..00111111111...", "..........1111..", "..........1111..", "..........dvdd..", "..........ddddd.", "..........KKKKK." ];
-var PACK = [ ".0000.", "m11110", "m12110", "011110", "0vvvv0", "0vVVv0", "0vvvv0", "011110", ".0000." ];
-var ARM = [ "221", "ww1", "uu1", "rr1", "110", "101", "110" ];
-var FRONT_L = [
-  "......m2", ".....m21", "....m211", "....m11G", "...m111H", "...01111", "...K0000",
-  "...GgsKs", "...Hgggg", "....gggg", ".....ggg",
-  "..m11111", ".m11dvvv", ".111dVVV", ".111vdvd", ".111vvvv", ".111VVdV", ".011vvdv", ".011vvvv",
-  ".111KKKK", ".011KKVK", "...01111", "...0111.", "...0111.", "...1111.", "...GHG1.", "...1111.",
-  "...0111.", "...0111.", "...dvdd.", "..ddddd.", "..KKKKK."
-];
-var FRONT = [];
-for (var fi = 0; fi < FRONT_L.length; fi++) {
-  var lft = FRONT_L[fi], rgt = '';
-  for (var fj = 7; fj >= 0; fj--) { var chh = lft[fj]; rgt += chh === 'm' ? '1' : chh; }
-  var row = lft + rgt;
-  if (fi >= 13 && fi <= 15) row = row.substr(0, 1) + (fi === 13 ? 'ww' : fi === 14 ? 'uu' : 'rr') + row.substr(3);
-  FRONT.push(row);
+// pixel buffers for fast pre-rendering
+var GB = null;
+function PBuf(w, h) { this.w = w; this.h = h; this.img = new ImageData(w, h); this.u = new Uint32Array(this.img.data.buffer); }
+function P(x, y, c) { x = x | 0; y = y | 0; if (x < 0 || y < 0 || x >= GB.w || y >= GB.h) return; GB.u[y * GB.w + x] = PU[c]; }
+function R(x, y, w, h, c) { for (var j = 0; j < h; j++) for (var i = 0; i < w; i++) P(x + i, y + j, c); }
+function LN(x0, y0, x1, y1, c) {
+  var dx = x1 - x0, dy = y1 - y0, n = Math.max(Math.abs(dx), Math.abs(dy)) | 0;
+  if (n === 0) { P(x0, y0, c); return; }
+  for (var i = 0; i <= n; i++) P(Math.round(x0 + dx * i / n), Math.round(y0 + dy * i / n), c);
 }
-
-var RUNS = [];
-function buildPart(rows, camo, cox, coy) {
-  var start = RUNS.length / 4;
-  for (var y = 0; y < rows.length; y++) {
-    var row = rows[y], prev = -1, rs = 0;
-    for (var x = 0; x <= row.length; x++) {
-      var c = -1;
-      if (x < row.length && row[x] !== '.') {
-        c = CH[row[x]];
-        if (camo && c === OL1) {
-          var n = hash((x + cox) >> 1, (y + coy) >> 1);
-          if (n < 0.3) c = OL0; else if (n > 0.86) c = OL2;
-        }
-      }
-      if (c !== prev) { if (prev >= 0) RUNS.push(rs, y, x - rs, prev); prev = c; rs = x; }
-    }
-  }
-  return { o: start, n: RUNS.length / 4 - start };
-}
-var P_HEAD = buildPart(HEAD, true, 8, 0), P_TORSO = buildPart(TORSO, true, 5, 10);
-var P_LEG = buildPart(LEG, true, 12, 21), P_LEGB = buildPart(LEG, true, 3, 21);
-var P_LEGK = buildPart(LEGK, true, 12, 21), P_LEGKB = buildPart(LEGK, true, 3, 21);
-var P_LEGH = buildPart(LEGH, true, 12, 24), P_LEGHB = buildPart(LEGH, true, 3, 24);
-var P_KNEEL = buildPart(KNEEL, true, 5, 27), P_SIT = buildPart(SIT, true, 5, 27);
-var P_PACK = buildPart(PACK, true, 1, 11), P_ARM = buildPart(ARM, true, 15, 11);
-var P_FRONT = buildPart(FRONT, true, 4, 0);
-var RUNA = new Int16Array(RUNS); RUNS = null;
-var DARK = new Uint8Array(PAL.length);
-for (var q = 0; q < PAL.length; q++) DARK[q] = q;
-DARK[OL0]=GND0; DARK[OL1]=OL0; DARK[OL2]=OL1; DARK[GR1]=GR0; DARK[GR2]=GR1; DARK[BRN0]=BLK; DARK[KHD]=OL0; DARK[RIM]=OL1;
-
-var CXo = 0, CYo = 0, CXb = 0, FL = false;
-function lr(lx, ly, w, h, c) {
-  if (FL) rect(CXo + 24 - lx - w, CYo + ly, w, h, c); else rect(CXo + lx, CYo + ly, w, h, c);
-}
-function lp(lx, ly, c) { lr(lx, ly, 1, 1, c); }
-function lline(x0, y0, x1, y1, c) {
-  var dx = x1 - x0, dy = y1 - y0, n = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
-  for (var i = 0; i <= n; i++) lp(x0 + Math.round(dx * i / n), y0 + Math.round(dy * i / n), c);
-}
-function lpart(p, lx, ly, dark, maxRow) {
-  for (var i = p.o, e = p.o + p.n; i < e; i++) {
-    var k = i << 2;
-    if (RUNA[k + 1] >= maxRow) continue;
-    var c = RUNA[k + 3]; if (dark) c = DARK[c]; if (c === RIM) c = RIMC;
-    lr(lx + RUNA[k], ly + RUNA[k + 1], RUNA[k + 2], 1, c);
-  }
-}
+function GET(x, y) { if (x < 0 || y < 0 || x >= GB.w || y >= GB.h) return 0; return GB.u[y * GB.w + x]; }
+function toCanvas(b) { var c = mk(b.w, b.h); c.getContext('2d').putImageData(b.img, 0, 0); return c; }
 
 /* ---------------- 3x5 pixel font (FPV OSD) ---------------- */
 var GLYPH = new Uint16Array(128);
@@ -181,7 +115,7 @@ var GLYPH = new Uint16Array(128);
     'T':'###,.#.,.#.,.#.,.#.', 'M':'#.#,###,###,#.#,#.#', 'D':'##.,#.#,#.#,#.#,##.', 'S':'###,#..,###,..#,###',
     'P':'###,#.#,###,#..,#..', 'E':'###,#..,###,#..,###', 'R':'##.,#.#,##.,#.#,#.#', 'C':'###,#..,#..,#..,###',
     'H':'#.#,#.#,###,#.#,#.#', 'W':'#.#,#.#,#.#,###,#.#', 'I':'###,.#.,.#.,.#.,###', ':':'...,.#.,...,.#.,...',
-    '%':'#..,..#,.#.,#..,..#', ' ':'...,...,...,...,...'
+    '%':'#..,..#,.#.,#..,..#', '.':'...,...,...,...,.#.', ' ':'...,...,...,...,...'
   };
   for (var k in G) {
     var rows = G[k].split(','), v = 0;
@@ -190,573 +124,887 @@ var GLYPH = new Uint16Array(128);
   }
 })();
 function glyph(code, x, y, c) { var v = GLYPH[code]; for (var b = 0; b < 15; b++) if (v & (1 << b)) px(x + (b % 3), y + ((b / 3) | 0), c); }
-function textS(str, x, y) {
-  for (var i = 0; i < str.length; i++) { glyph(str.charCodeAt(i), x + i * 4 + 1, y + 1, TH0); glyph(str.charCodeAt(i), x + i * 4, y, TH5); }
-}
+function textS(str, x, y) { for (var i = 0; i < str.length; i++) { glyph(str.charCodeAt(i), x + i * 4 + 1, y + 1, TH0); glyph(str.charCodeAt(i), x + i * 4, y, TH5); } }
 function numS(n, digits, x, y) {
   n = Math.max(0, Math.floor(n));
   for (var i = digits - 1; i >= 0; i--) { var d = 48 + (n % 10); glyph(d, x + i * 4 + 1, y + 1, TH0); glyph(d, x + i * 4, y, TH5); n = Math.floor(n / 10); }
 }
 
 /* =====================================================================
+   CHARACTER RENDERER — bones + 2-bone IK rasterised into a pixel buffer:
+   4-tone material ramps lit by the scene light, camo locked to the cloth,
+   automatic rim light on the lit edge and a 1px dark outline.
+   ===================================================================== */
+var CBW = 120, CBH = 116, COX = 60, COY = 110;
+function CharBuf() { this.c = mk(CBW, CBH); this.x = this.c.getContext('2d'); this.img = this.x.createImageData(CBW, CBH); this.u = new Uint32Array(this.img.data.buffer); this.t = new Int8Array(CBW * CBH); this.m = new Uint8Array(CBW * CBH); }
+var CPART = 0, CB = null, FF = 1, LDX = -0.55, LDY = -0.83, RIMCOL = RIM, RIMSIDE = -1, DARKEN = 0;
+var IKX = 0, IKY = 0, IKEX = 0, IKEY = 0, TX = 0, TY = 0, UX = 0, UY = -1, FX = 1, FY = 0, HPX = 0, HPY = 0;
+var Q = { hipX: 0, hipY: -40, lean: 0, head: 0, ankNX: 3, ankNY: -4, ankFX: -3, ankFY: -4, toeF: 0,
+          handNX: 3, handNY: -38, handFX: -1, handFY: -38, item: 0, packY: 0, ant: 0, front: 0,
+          glow: 0, led: GR1, eyesDown: 0, style: 0, thumb: 0, itemAt: 0 };
+
+function cset(x, y, col, tone) { x = x | 0; y = y | 0; if (x < 0 || y < 0 || x >= CBW || y >= CBH) return; var i = y * CBW + x; CB.u[i] = PU[col]; CB.t[i] = tone; CB.m[i] = CPART; }
+function toneOf(nx, ny, x, y) {
+  var s = nx * LDX + ny * LDY + (bay(x, y) - 7.5) * 0.035;
+  var t = s > 0.45 ? 3 : s > -0.12 ? 2 : s > -0.6 ? 1 : 0; t -= DARKEN; return t < 0 ? 0 : t;
+}
+function rcol(ramp, tone, camo, u, v, sd) {
+  var r = ramp;
+  if (camo) { var h = hash(Math.floor((u + 64) / 2.3) + sd * 37, Math.floor((v + 64) / 2.3) + sd * 11); if (h < 0.24) r = R_CAMOD; else if (h > 0.84) r = R_CAMOB; }
+  return RAMPS[r * 4 + tone];
+}
+function BX(lx) { return COX + FF * lx; }
+function BY(ly) { return COY + ly; }
+function cap(lax, lay, lbx, lby, ra, rb, ramp, camo, sd) {
+  var ax = BX(lax), ay = BY(lay), bx = BX(lbx), by = BY(lby);
+  var dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+  if (L2 < 1e-6) { dx = 1e-3; L2 = 1e-6; }
+  var L = Math.sqrt(L2), rm = ra > rb ? ra : rb;
+  var x0 = Math.floor(Math.min(ax, bx) - rm - 1), x1 = Math.ceil(Math.max(ax, bx) + rm + 1);
+  var y0 = Math.floor(Math.min(ay, by) - rm - 1), y1 = Math.ceil(Math.max(ay, by) + rm + 1);
+  for (var y = y0; y <= y1; y++) for (var x = x0; x <= x1; x++) {
+    var qx = x + 0.5, qy = y + 0.5;
+    var t = ((qx - ax) * dx + (qy - ay) * dy) / L2; if (t < 0) t = 0; else if (t > 1) t = 1;
+    var ex = qx - (ax + dx * t), ey = qy - (ay + dy * t), r = ra + (rb - ra) * t;
+    if (ex * ex + ey * ey > r * r) continue;
+    var tone = toneOf(ex / r, ey / r, x, y);
+    cset(x, y, rcol(ramp, tone, camo, t * L, (ex * (-dy) + ey * dx) / L * FF, sd), tone);
+  }
+}
+function cpx(lx, ly, col, tone) { cset(BX(Math.floor(lx)) - (FF < 0 ? 1 : 0), BY(Math.floor(ly)), col, tone); }
+function crect(lx, ly, w, h, col, tone) { for (var j = 0; j < h; j++) for (var i = 0; i < w; i++) cpx(lx + i, ly + j, col, tone); }
+function ik(ax, ay, tx, ty, l1, l2, bend) {
+  var dx = tx - ax, dy = ty - ay, d = Math.sqrt(dx * dx + dy * dy);
+  if (d < 1e-4) { d = 1e-4; dy = 1e-4; }
+  if (d > l1 + l2 - 0.05) { var s = (l1 + l2 - 0.05) / d; dx *= s; dy *= s; d = l1 + l2 - 0.05; }
+  var a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  IKX = ax + dx * a / d + bend * (-dy / d) * h; IKY = ay + dy * a / d + bend * (dx / d) * h;
+  IKEX = ax + dx; IKEY = ay + dy;
+}
+function tp(u, v) { TX = HPX + UX * u + FX * v; TY = HPY + UY * u + FY * v; }
+
+function drawLeg(hx, hy, ax, ay, toe, sd) {
+  ik(hx, hy, ax, ay, 19, 18, -1);
+  var kx = IKX, ky = IKY, ex = IKEX, ey = IKEY;
+  cap(hx, hy, kx, ky, 5.3, 4.4, R_CLOTH, true, sd);
+  cap(kx, ky, ex, ey, 4.3, 3.4, R_CLOTH, true, sd + 1);
+  cap(kx + 1.3, ky - 0.6, kx + 1.6, ky + 1.6, 2.6, 2.4, R_GLOVE, false, 0);
+  if (toe === 0) { cap(ex - 1.5, ey + 0.6, ex + 5.2, ey + 1.6, 3.1, 2.5, R_BOOT, false, 0); crect(ex - 4, ey + 3, 11, 1, BLK, 0); crect(ex - 1, ey - 0.5, 4, 1, BR1, 2); }
+  else { cap(ex + 1, ey + 0.4, ex - 6, ey + 1.6, 3.0, 2.4, R_BOOT, false, 0); crect(ex - 9, ey + 3, 11, 1, BLK, 0); }
+}
+var GLX = 0, GLY = 0;
+function drawArm(sx, sy, hx, hy, sd, near) {
+  ik(sx, sy, hx, hy, 14, 13, 1);
+  var elx = IKX, ely = IKY;
+  cap(sx, sy, elx, ely, 3.9, 3.3, R_CLOTH, true, sd);
+  cap(elx, ely, IKEX, IKEY, 3.3, 2.9, R_CLOTH, true, sd + 1);
+  GLX = IKEX; GLY = IKEY;
+  if (near && Q.style === 0) {
+    var px_ = lerp(sx, elx, 0.4), py_ = lerp(sy, ely, 0.4);
+    crect(px_ - 1, py_ - 1, 3, 1, WHT, 2); crect(px_ - 1, py_, 3, 1, BLU, 2); crect(px_ - 1, py_ + 1, 3, 1, RED, 2);
+  }
+}
+function drawGlove(x, y) {
+  cap(x, y, x + 0.8, y + 0.4, 2.8, 2.6, Q.style === 0 ? R_GLOVE : R_SKIN, false, 0);
+  if (Q.glow >= 1) cpx(x, y - 2, GLW0, 2);
+}
+function drawItem(item, mx, my) {
+  mx = Math.round(mx); my = Math.round(my);
+  if (item === 1) { crect(mx - 3, my - 2, 7, 4, GR1, 2); crect(mx - 3, my - 2, 7, 1, GR2, 3); crect(mx + 1, my, 2, 1, GRN, 3); }
+  else if (item === 2) {
+    crect(mx - 6, my - 3, 13, 6, GR0, 1); crect(mx - 6, my - 3, 13, 1, GR2, 3); crect(mx - 5, my - 1, 11, 1, GR1, 2);
+    crect(mx - 4, my + 1, 9, 1, GR1, 2); crect(mx + 6, my, 2, 2, BLK, 0); cpx(mx + 7, my, GR2, 3);
+  } else if (item === 3) {
+    crect(mx - 7, my - 1, 14, 5, GR0, 1); crect(mx - 7, my - 1, 14, 1, GR1, 2);
+    crect(mx - 3, my - 1, 6, 3, Q.glow >= 1 ? GLW1 : GLW0, 3); if (Q.glow >= 1) crect(mx - 3, my + 1, 6, 1, GLW0, 2);
+    crect(mx - 7, my - 4, 1, 3, GR2, 3); crect(mx + 6, my - 4, 1, 3, GR2, 3);
+    cpx(mx - 5, my + Q.thumb, GR2, 3); cpx(mx + 4, my + 1 - Q.thumb, GR2, 3); cpx(mx, my + 3, Q.led, 3);
+  } else if (item === 4) { cap(mx - 3, my - 2, mx + 2, my + 1, 1.7, 1.7, R_GLOVE, false, 0); }
+  else if (item === 5) { crect(mx - 5, my - 2, 10, 5, KHA, 2); crect(mx - 5, my - 1, 10, 1, KHD, 1); crect(mx - 5, my + 1, 10, 1, KHD, 1); }
+}
+function drawHead(cx, cy, a, style) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  var ca = Math.cos(a), sa = Math.sin(a);
+  for (var dy = -12; dy <= 12; dy++) for (var dx = -12; dx <= 12; dx++) {
+    var hx = dx * ca + dy * sa, hy = -dx * sa + dy * ca;
+    var bx = BX(cx + dx) - (FF < 0 ? 1 : 0), by = BY(cy + dy);
+    var tone = toneOf(FF * dx / 9, dy / 9, bx, by), col = -1;
+    if (style === 0) {
+      var helm = hx * hx + (hy + 0.5) * (hy + 0.5) <= 75.7 && hy <= 0.6;
+      var face = (hx - 0.8) * (hx - 0.8) + (hy - 2.8) * (hy - 2.8) <= 46 && hy > 0.6;
+      var gait = (hx - 0.3) * (hx - 0.3) / 36 + (hy - 5.5) * (hy - 5.5) / 22 <= 1;
+      if (helm) {
+        col = rcol(R_CLOTH, tone, true, hx, hy, 9);
+        if (hy > -0.6) { tone = tone > 1 ? 1 : 0; col = RAMPS[R_CLOTH * 4 + tone]; }
+        else if (hy > -3.6 && hy < -2.6) { tone = tone > 0 ? tone - 1 : 0; col = RAMPS[R_CLOTH * 4 + tone]; }
+      } else if (face || gait) {
+        col = RAMPS[R_BALA * 4 + tone];
+        if (hy >= 1.4 && hy < 3.8 && hx >= 1.6 && hx <= 7.6) {
+          col = RAMPS[R_SKIN * 4 + (tone > 2 ? 2 : tone)];
+          if (hy >= 2.0 && hy < 3.4 && ((hx >= 3 && hx < 4.4) || (hx >= 5.9 && hx < 6.9))) col = Q.eyesDown ? SK1 : BLK;
+        } else if (Q.glow >= 2 && hy > 4 && hx > 2 && bay(bx, by) < 9) col = GLW0;
+      }
+      if (hx >= 5.2 && hx <= 8.6 && hy >= -6.5 && hy <= -3.6) col = RAMPS[R_METAL * 4 + tone];
+      if ((hx + 2.3) * (hx + 2.3) + (hy - 2.6) * (hy - 2.6) <= 7.3) col = RAMPS[R_GLOVE * 4 + tone];
+    } else {
+      var hat = hx * hx + (hy + 0.8) * (hy + 0.8) <= 70.6 && hy <= -0.8;
+      var skin = (hx - 0.6) * (hx - 0.6) + (hy - 2.6) * (hy - 2.6) <= 44 && hy > -0.8;
+      if (hat) { var tt = (hy > -3.2) ? (tone < 3 ? tone + 1 : 3) : tone; if ((Math.floor(hx + 20) & 1) === 0 && hy > -3.2) tt = tt > 0 ? tt - 1 : 0; col = RAMPS[R_KNIT * 4 + tt]; }
+      else if (skin) {
+        col = RAMPS[R_SKIN * 4 + tone];
+        if (hy > 3.8 && hash(bx, by) < 0.45) col = SK1;
+        if (hx >= 3.4 && hx < 4.6 && hy >= 0.6 && hy < 1.8) col = Q.eyesDown ? SK1 : BLK;
+        if (hx >= 3 && hx < 5.4 && hy >= -0.4 && hy < 0.6) col = SK0;
+        if (hx >= 4.5 && hx < 6.5 && hy >= 4.3 && hy < 5.0) col = SK0;
+        if (Q.glow >= 1 && hx > 3 && bay(bx, by) < 6) col = GLW0;
+      }
+      if ((hx + 1.6) * (hx + 1.6) + (hy - 1.6) * (hy - 1.6) <= 6.8) col = RAMPS[R_GLOVE * 4 + tone];
+      var rr = hx * hx + (hy + 0.8) * (hy + 0.8);
+      if (rr >= 67 && rr <= 86 && hy < -1 && hx > -3 && hx < 2) col = RAMPS[R_GLOVE * 4 + tone];
+    }
+    if (col >= 0) cset(bx, by, col, tone);
+  }
+}
+function drawSide() {
+  var hx = Q.hipX, hy = Q.hipY;
+  UX = Math.sin(Q.lean); UY = -Math.cos(Q.lean); FX = Math.cos(Q.lean); FY = Math.sin(Q.lean); HPX = hx; HPY = hy;
+  // far side (darker)
+  DARKEN = 1; CPART = 1;
+  drawLeg(hx - 1.5, hy, Q.ankFX, Q.ankFY, Q.toeF, 11);
+  CPART = 2; tp(21.5, -1.2); drawArm(TX, TY, Q.handFX, Q.handFY, 21, false); drawGlove(GLX, GLY);
+  DARKEN = 0; CPART = 3;
+  // pack + whip antenna
+  if (Q.style === 0) {
+    tp(19.5, -9.8); var px1 = TX, py1 = TY + Q.packY; tp(8.5, -9.8);
+    cap(px1, py1, TX, TY + Q.packY, 5.8, 5.6, R_CLOTH, true, 31);
+    tp(13.5, -11.2); var qx1 = TX, qy1 = TY + Q.packY; tp(10, -11.2); cap(qx1, qy1, TX, TY + Q.packY, 3.9, 3.9, R_CLOTH, true, 33);
+    tp(21, -12); var ax0 = TX, ay0 = TY + Q.packY;
+    for (var i = 1; i <= 16; i++) cpx(ax0 + (i > 9 ? Q.ant * (i - 9) / 7 : 0), ay0 - i, i > 14 ? GR2 : GR1, 2);
+  }
+  // torso + plate carrier
+  CPART = 4; tp(2, 0); var t0x = TX, t0y = TY; tp(21, 0); cap(t0x, t0y, TX, TY, 7.8, 8.8, R_CLOTH, true, 41);
+  if (Q.style === 0) {
+    CPART = 5; tp(7, 0.5); var v0x = TX, v0y = TY; tp(19, 0.5); cap(v0x, v0y, TX, TY, 9.8, 9.8, R_VEST, false, 0);
+    for (var r = 9; r <= 15; r += 3) for (var v = -8; v <= 9; v++) { if (((v + 20) & 3) === 0) continue; tp(r, v); cpx(TX, TY, VS0, 0); }
+    tp(8.5, 9); var p0x = TX, p0y = TY; tp(13.5, 9); cap(p0x, p0y, TX, TY, 3.4, 3.4, R_VEST, false, 0);
+    for (var w = 7; w <= 11; w++) { tp(13.9, w); cpx(TX, TY, KHA, 3); }
+    tp(11, 8); var s1x = TX, s1y = TY; tp(11, 12); cpx(s1x, s1y, VS0, 0); cpx(TX, TY, VS0, 0);
+    tp(16.5, 8.5); var a0x = TX, a0y = TY; tp(18.5, 8.5); cap(a0x, a0y, TX, TY, 2.3, 2.3, R_VEST, false, 0);
+    for (var sI = 0; sI <= 10; sI++) { tp(21 - sI * 0.7, -6 + sI * 1.1); cpx(TX, TY, BRN0, 0); }
+  } else {
+    tp(18, 6); var nbx = TX, nby = TY;
+  }
+  // near leg
+  CPART = 6; drawLeg(hx + 1.5, hy, Q.ankNX, Q.ankNY, 0, 13);
+  // neck + head
+  CPART = 7; tp(22.5, 0.6); var nx0 = TX, ny0 = TY; tp(25.5, 1.1);
+  cap(nx0, ny0, TX, TY, 3.3, 3.1, Q.style === 0 ? R_BALA : R_SKIN, false, 0);
+  var a = Q.lean + Q.head;
+  drawHead(TX + Math.sin(a) * 7.5 + Math.cos(a) * 1.0, TY - Math.cos(a) * 7.5 + Math.sin(a) * 1.0, a, Q.style);
+  // near arm + held item + glove
+  CPART = 8; tp(21.5, 1.4); drawArm(TX, TY, Q.handNX, Q.handNY, 23, true);
+  var ngx = GLX, ngy = GLY;
+  CPART = 9; if (Q.item) drawItem(Q.item, Q.itemAt === 1 ? ngx : Q.itemAt === 2 ? Q.handFX : (Q.handNX + Q.handFX) / 2, Q.itemAt === 1 ? ngy - 1 : Q.itemAt === 2 ? Q.handFY : (Q.handNY + Q.handFY) / 2);
+  CPART = 10; drawGlove(ngx, ngy);
+}
+function drawFrontView() {
+  FF = 1;
+  cap(-4.5, -40, -4.8, -5, 5.2, 3.6, R_CLOTH, true, 51); cap(4.5, -40, 4.8, -5, 5.2, 3.6, R_CLOTH, true, 53);
+  cap(-4.8, -3.5, -4.8, -2.5, 3.6, 3.6, R_BOOT, false, 0); cap(4.8, -3.5, 4.8, -2.5, 3.6, 3.6, R_BOOT, false, 0);
+  crect(-8, -1, 7, 1, BLK, 0); crect(1, -1, 7, 1, BLK, 0);
+  cap(-4.5, -26, -4.5, -24, 2.6, 2.6, R_GLOVE, false, 0); cap(4.5, -26, 4.5, -24, 2.6, 2.6, R_GLOVE, false, 0);
+  cap(0, -42, 0, -61, 10.5, 11.5, R_CLOTH, true, 55);
+  cap(0, -46, 0, -59, 12, 12, R_VEST, false, 0);
+  for (var r = -55; r <= -49; r += 3) crect(-10, r, 21, 1, VS0, 0);
+  cap(-6, -47, -6, -50, 3, 3, R_VEST, false, 0); cap(0, -47, 0, -50, 3, 3, R_VEST, false, 0); cap(6, -47, 6, -50, 3, 3, R_VEST, false, 0);
+  var carry = Q.item === 2;
+  cap(-12, -60, -14, -51, 3.9, 3.4, R_CLOTH, true, 57); cap(12, -60, 14, -51, 3.9, 3.4, R_CLOTH, true, 59);
+  if (carry) {
+    cap(-14, -51, -8, -48, 3.3, 2.9, R_CLOTH, true, 58); cap(14, -51, 8, -48, 3.3, 2.9, R_CLOTH, true, 60);
+    drawItem(2, 0, -50); cap(-8, -48, -7.4, -47.6, 2.8, 2.6, R_GLOVE, false, 0); cap(8, -48, 8.6, -47.6, 2.8, 2.6, R_GLOVE, false, 0);
+  } else {
+    cap(-14, -51, -13, -40, 3.3, 2.9, R_CLOTH, true, 58); cap(14, -51, 13, -40, 3.3, 2.9, R_CLOTH, true, 60);
+    cap(-13, -39, -12.6, -38.6, 2.8, 2.6, R_GLOVE, false, 0); cap(13, -39, 13.4, -38.6, 2.8, 2.6, R_GLOVE, false, 0);
+  }
+  crect(-15, -57, 3, 1, WHT, 2); crect(-15, -56, 3, 1, BLU, 2); crect(-15, -55, 3, 1, RED, 2);
+  cap(0, -61, 0, -64, 3.5, 3.5, R_BALA, false, 0);
+  for (var dy = -12; dy <= 12; dy++) for (var dx = -12; dx <= 12; dx++) {
+    var bx = COX + dx, by = COY - 72 + dy, tone = toneOf(dx / 9, dy / 9, bx, by), col = -1;
+    if (dx * dx + (dy + 0.5) * (dy + 0.5) <= 77 && dy <= 0.6) { col = rcol(R_CLOTH, tone, true, dx, dy, 9); if (dy > -0.6) col = RAMPS[R_CLOTH * 4 + (tone > 1 ? 1 : 0)]; }
+    else if (dx * dx / 46 + (dy - 3) * (dy - 3) / 46 <= 1 && dy > 0.6) {
+      col = RAMPS[R_BALA * 4 + tone];
+      if (dy >= 1.6 && dy < 3.8 && dx >= -5.5 && dx < 5.5) { col = RAMPS[R_SKIN * 4 + (tone > 2 ? 2 : tone)]; if (dy >= 2.1 && dy < 3.4 && ((dx >= -3.5 && dx < -1.8) || (dx >= 1.8 && dx < 3.5))) col = BLK; }
+    }
+    if (dx >= -1.6 && dx <= 1.6 && dy >= -7.5 && dy <= -4.6) col = RAMPS[R_METAL * 4 + tone];
+    if (((dx + 8.4) * (dx + 8.4) + (dy - 2.5) * (dy - 2.5) <= 6.5) || ((dx - 8.4) * (dx - 8.4) + (dy - 2.5) * (dy - 2.5) <= 6.5)) col = RAMPS[R_GLOVE * 4 + tone];
+    if (col >= 0) cset(bx, by, col, tone);
+  }
+  cpx(-14, -66, GR1, 2); for (var i = 1; i <= 14; i++) cpx(-15, -64 - i, i > 12 ? GR2 : GR1, 2);
+}
+function finishChar() {
+  var u = CB.u, t = CB.t, m = CB.m, x, y, i, j;
+  // internal contour lines where a front limb overlaps the body behind it
+  for (y = 1; y < CBH - 1; y++) for (x = 1; x < CBW - 1; x++) {
+    i = y * CBW + x; if (t[i] < 0 || (m[i] !== 6 && m[i] !== 8)) continue;
+    j = i - 1; if (t[j] >= 0 && m[j] < m[i] - 0 && m[j] !== m[i] && m[j] !== 7) { u[i] = PU[CL0]; t[i] = 0; continue; }
+    j = i + 1; if (t[j] >= 0 && m[j] < m[i] && m[j] !== 7) { u[i] = PU[CL0]; t[i] = 0; continue; }
+    j = i - CBW; if (t[j] >= 0 && m[j] < m[i] && m[j] !== 7) { u[i] = PU[CL0]; t[i] = 0; continue; }
+    j = i + CBW; if (t[j] >= 0 && m[j] < m[i] && m[j] !== 7) { u[i] = PU[CL0]; t[i] = 0; }
+  }
+  // broken rim light on the edge facing the light
+  for (y = 1; y < CBH - 1; y++) for (x = 1; x < CBW - 1; x++) {
+    i = y * CBW + x; if (t[i] < 1) continue;
+    var se = t[i + RIMSIDE] < 0, ue = t[i - CBW] < 0, hh = hash(x * 7, y * 3);
+    if ((se && ue) || (se && hh < 0.42) || (ue && hh < 0.62)) { u[i] = PU[RIMCOL]; t[i] = 4; }
+  }
+  for (y = 1; y < CBH - 1; y++) for (x = 1; x < CBW - 1; x++) {
+    i = y * CBW + x; if (t[i] >= 0 || t[i] === -2) continue;
+    if (t[i - 1] >= 0 || t[i + 1] >= 0 || t[i - CBW] >= 0 || t[i + CBW] >= 0) { u[i] = PU[BLK]; t[i] = -2; }
+  }
+  CB.x.putImageData(CB.img, 0, 0);
+}
+function renderChar(buf, facing) {
+  CB = buf; FF = facing; CB.u.fill(0); CB.t.fill(-1); CB.m.fill(0); DARKEN = 0; CPART = 4;
+  if (Q.front) drawFrontView(); else drawSide();
+  finishChar();
+}
+
+/* =====================================================================
    PRE-RENDERED LAYERS
    ===================================================================== */
-var MOX = 40, MOY = 15, MOR = 7;
+var SKW = 560, SKH = 500, MOX = 110, MOY = 70, MOR = 17, TRW = 680;
+var skyC, treeC, worldC, fpvC;
+var NS = 150, sX = new Int16Array(NS), sY = new Int16Array(NS), sB = new Uint8Array(NS), sPh = new Float32Array(NS), sSp = new Float32Array(NS);
+
 function genSky() {
-  g = skyC.getContext('2d');
-  var x, y;
+  GB = new PBuf(SKW, SKH);
+  var x, y, i;
   for (y = 0; y < SKH; y++) for (x = 0; x < SKW; x++) {
-    var yy = y + (bay(x, y) - 7.5) * 0.42;
-    px(x, y, yy < 17 ? SKY0 : yy < 33 ? SKY1 : yy < 47 ? SKY2 : SKY3);
+    var yy = y + (bay(x, y) - 7.5) * 1.1;
+    P(x, y, yy < 100 ? SKY0 : yy < 170 ? SKY1 : yy < 225 ? SKY2 : SKY3);
   }
+  for (y = -36; y <= 36; y++) for (x = -36; x <= 36; x++) {                 // faint halo
+    var d = Math.sqrt(x * x + y * y);
+    if (d > MOR + 2 && d < 34 && bay(MOX + x, MOY + y) < (34 - d) / 16 * 4) P(MOX + x, MOY + y, SKY3);
+  }
+  var CR = [[-6, -5, 3], [-2, 6, 4], [4, -8, 2], [-10, 3, 2], [3, 3, 2], [-8, -10, 2], [6, 9, 2]];
   for (y = -MOR - 1; y <= MOR + 1; y++) for (x = -MOR - 1; x <= MOR + 1; x++) {
-    if (x * x + y * y > MOR * MOR + MOR * 0.6) continue;
-    var c = MOON;
-    if ((x - 9) * (x - 9) + y * y < 8.2 * 8.2) c = SKY3;
-    else if ((x - 8) * (x - 8) + y * y < 9.4 * 9.4) c = MOONS;
-    px(MOX + x, MOY + y, c);
+    if (x * x + y * y > MOR * MOR + MOR * 0.5) continue;
+    var c = MOON, n = vnoise(x + 40, y + 40, 6, 5, 77);
+    if (n > 0.62) c = MOONS;
+    for (i = 0; i < CR.length; i++) { var cx = x - CR[i][0], cy = y - CR[i][1], cr = CR[i][2]; if (cx * cx + cy * cy <= cr * cr) c = (cx + cy < 0) ? MOONS : c === MOONS ? CLDL : MOONS; }
+    var tx = x - 21;
+    if (tx * tx + y * y < 19.5 * 19.5) c = SKY3; else if (tx * tx + y * y < 22 * 22 && bay(x + 50, y + 50) < 9) c = MOONS;
+    if (x * x + y * y > (MOR - 1) * (MOR - 1) && x < -4 && y < 4 && c === MOON) c = WHT;
+    P(MOX + x, MOY + y, c);
   }
-  px(MOX-3,MOY-3,MOONS); px(MOX-2,MOY-3,MOONS); px(MOX-4,MOY+1,MOONS); px(MOX-1,MOY+2,MOONS);
-  px(MOX-2,MOY+2,MOONS); px(MOX-5,MOY-1,MOONS); px(MOX,MOY-5,MOONS); px(MOX-5,MOY-5,WHT); px(MOX-6,MOY-3,WHT);
-  var CL = [[22,19,30],[28,21,20],[14,23,14],[76,11,28],[96,13,16],[50,35,24],[110,29,22],[126,41,18],[140,17,26],[160,33,20],[178,9,22],[170,45,16],[2,38,18]];
-  for (var ci = 0; ci < CL.length; ci++) {
-    var cx = CL[ci][0], cy = CL[ci][1], cl = CL[ci][2];
-    rect(cx + 2, cy, cl - 4, 1, SKY3); rect(cx + 6, cy - 1, cl - 13, 1, SKY3);
-    px(cx, cy, SKY2); px(cx + 1, cy, SKY3); px(cx + cl - 2, cy, SKY3);
-    if (cx > 10 && cx < 66) for (x = cx + 6; x < cx + cl - 7; x++) if (hash(x, cy) < 0.55) px(x, cy - 1, CLDL);
+  seed = 0x77c10d | 0;
+  for (i = 0; i < 22; i++) {
+    var lx = (rnd() * (SKW + 40) - 20) | 0, ly = 30 + ((rnd() * 230) | 0), len = 40 + ((rnd() * 90) | 0), th = 1 + ((rnd() * 3) | 0);
+    for (var r = 0; r < th; r++) {
+      var inset = r * 7 + ((rnd() * 5) | 0), ry = ly - r;
+      for (x = lx + inset; x < lx + len - inset; x++) {
+        if (hash(x, ry) < 0.08) continue;
+        var near = Math.abs(x - MOX) < 140 && ry < 140;
+        P(x, ry, (r === th - 1 && near && hash(x, ry + 1) < 0.6) ? CLDL : SKY3);
+      }
+      P(lx + inset - 1, ry, SKY2); P(lx + len - inset, ry, SKY2);
+    }
+  }
+  skyC = toCanvas(GB);
+  var s0 = PU[SKY0], s1 = PU[SKY1], s2 = PU[SKY2], n2 = 0, guard = 0;
+  seed = 0x13579b | 0;
+  while (n2 < NS && guard++ < 20000) {
+    x = 2 + ((rnd() * (SKW - 4)) | 0); y = 2 + ((rnd() * 240) | 0);
+    var dx = x - MOX, dy = y - MOY; if (dx * dx + dy * dy < 1600) continue;
+    var ok = true; for (var q = -1; q <= 1 && ok; q++) for (var w = -1; w <= 1; w++) { var v = GET(x + w, y + q); if (v !== s0 && v !== s1 && v !== s2) { ok = false; break; } }
+    if (!ok) continue;
+    sX[n2] = x; sY[n2] = y; var rr = rnd(); sB[n2] = rr < 0.08 ? 2 : rr < 0.4 ? 1 : 0; sPh[n2] = rnd() * 6.283; sSp[n2] = 0.6 + rnd() * 2.2; n2++;
   }
 }
-function farY(x) { return 57 + Math.round(2.5 * Math.sin(x * 0.045 + 0.5) + 1.5 * Math.sin(x * 0.11 + 2.0)); }
+function farY(x) { return 182 + Math.round(4 * Math.sin(x * 0.018 + 0.5) + 2.5 * Math.sin(x * 0.045 + 2.0)); }
 function genTrees() {
-  g = treeC.getContext('2d');
+  GB = new PBuf(TRW, WH);
   var x, y;
-  for (x = 0; x < TRW; x++) { var fy = farY(x); rect(x, fy, 1, 72 - fy, HILL); }
+  for (x = 0; x < TRW; x++) { var fy = farY(x); for (y = fy; y < 232; y++) P(x, y, HILL); }
   seed = 0x51ed27 | 0; x = 0;
-  while (x < TRW + 2) {
-    var base = farY(x) + 1;
+  while (x < TRW + 6) {
+    var base = farY(x) + 2;
     if (rnd() < 0.72) {
-      var th = 4 + ((rnd() * 7) | 0);
+      var th = 14 + ((rnd() * 22) | 0);
       for (var r = 0; r < th; r++) {
-        var half = (r * 0.42) | 0; if (r % 3 === 2 && half > 0) half -= 1;
-        rect(x - half, base - th + r, half * 2 + 1, 1, TREE);
+        var half = Math.floor(r * 0.36); if (r % 4 === 3 && half > 1) half -= 1;
+        for (var k = -half; k <= half; k++) P(x + k, base - th + r, TREE);
       }
+      if (hash(x, 3) < 0.4) P(x, base - th, SNOWD);
     } else {
-      var br = 2 + ((rnd() * 3) | 0);
-      for (y = -br; y <= br; y++) for (var bx = -br - 1; bx <= br + 1; bx++)
-        if (bx * bx * 0.7 + y * y <= br * br + 0.5 && hash(x + bx, y + 40) > 0.08) px(x + bx, base - br + y, TREE);
+      var br = 5 + ((rnd() * 5) | 0);
+      for (y = -br; y <= br; y++) for (var bx = -br - 2; bx <= br + 2; bx++)
+        if (bx * bx * 0.7 + y * y <= br * br + 0.5 && hash(x + bx, y + 40) > 0.1) P(x + bx, base - br + y, TREE);
     }
-    x += 2 + ((rnd() * 4) | 0);
+    x += 3 + ((rnd() * 7) | 0);
   }
+  treeC = toCanvas(GB);
 }
 
-var ROOM_X0 = 16, ROOM_X1 = 85, ROOM_Y0 = 88;
-var STAIR_X0 = 92, STAIR_N = 15;
-var LAMPX = 58, LAMPY = 93;
-var GXD = 198, GYD = 61;
-var MAST_X = 232, ANT_X = 4, CRATER_X = 247;
-function treadY(x) { var i = (x - STAIR_X0) >> 2; return 120 - 4 * i; }
-function feetY(x) {
-  if (x < STAIR_X0) return FLOOR - 1;
-  if (x >= STAIR_X0 + 4 * STAIR_N) return SURF - 1;
-  return treadY(x) - 1;
+/* ---- world geometry ---- */
+var ROOM_X0 = 40, ROOM_X1 = 249, ROOM_Y0 = 264, STAIR_X0 = 262, STAIR_N = 15, STAIR_END = 412;
+var LAMPX = 160, LAMPY = 277, DOORX = 256;
+var GXD = 556, GYD = 195, TREEX = 440, OWLX = 745, OWLY = 147;
+var CASEX = 213, SHELFY = 300, CRATEX = 191, PARTX = 114;
+function moundTop(x) { return (x > 26 && x < 266) ? SURF - Math.round(8 * Math.sin((x - 26) / 240 * Math.PI)) : SURF; }
+function surfTop(x) {
+  var d = x - 795;
+  if (d > -16 && d < 16) { var a = Math.abs(d); return SURF + (a < 11 ? Math.round(6 * Math.cos(a / 11 * 1.57)) : (a < 14 ? -2 : -1)); }
+  return moundTop(x);
 }
-function bodyY(x) {
-  if (x < STAIR_X0) return FLOOR - 1;
-  if (x >= STAIR_X0 + 4 * STAIR_N) return SURF - 1;
-  return Math.round(122 - (x - STAIR_X0) * 59 / 60);
+function treadY(x) { var i = Math.floor((x - STAIR_X0) / 10); return 340 - 10 * i; }
+function groundAt(x) {
+  x = Math.round(x);
+  if (x < STAIR_X0) return x >= ROOM_X0 - 4 ? FLOOR : surfTop(x);
+  if (x >= STAIR_END) return surfTop(x);
+  return treadY(x);
 }
-function onStairs(x) { return x >= STAIR_X0 - 2 && x < STAIR_X0 + 4 * STAIR_N + 2; }
-function moundY(x) { return x > 8 && x < 92 ? SURF - Math.round(5 * Math.sin((x - 8) / 84 * Math.PI)) : SURF; }
-function surfY(x) {
-  var d = x - CRATER_X;
-  if (d > -9 && d < 9) { var a = d < 0 ? -d : d; return SURF + (a < 6 ? Math.round(3 * Math.cos(a / 6 * 1.57)) : (a < 8 ? -1 : 0)); }
-  return moundY(x);
-}
-function inRoom(x, y) { return x >= ROOM_X0 && x <= ROOM_X1 + 6 && y >= ROOM_Y0 && y < FLOOR; }
-function inShaft(x, y) { return x >= STAIR_X0 && x < STAIR_X0 + 4 * STAIR_N && y >= SURF && y < treadY(x); }
+function inShaft(x, y) { return x >= STAIR_X0 && x < STAIR_END && y >= SURF && y < treadY(x); }
+function inRoom(x, y) { return x >= ROOM_X0 && x <= ROOM_X1 + 13 && y >= ROOM_Y0 && y < FLOOR; }
 
 function genWorld() {
-  g = worldC.getContext('2d');
-  var x, y, i, c;
-  // earth cross-section with strata: topsoil, clay, sand lens, deep soil
+  GB = new PBuf(WW, WH);
+  var x, y, i, c, k;
+  // earth: turf, topsoil, clay, sand lens, deep soil
   for (x = 0; x < WW; x++) {
-    var sy0 = x > 8 && x < 92 ? SURF : surfY(x);
-    var b1 = SURF + 11 + Math.round(2 * Math.sin(x * 0.05)), b2 = SURF + 30 + Math.round(3 * Math.sin(x * 0.03 + 1));
-    var b3 = b2 + 5 + Math.round(2 * Math.sin(x * 0.08 + 2));
-    for (y = sy0; y < WH; y++) {
-      var d = y - sy0, dith = (bay(x, y) - 7.5) * 0.15;
-      var n = vnoise(x, y, 9, 5, 300) + dith * 0.1;
+    var st = surfTop(x);
+    var b1 = SURF + 26 + Math.round(4 * Math.sin(x * 0.021)), b2 = SURF + 80 + Math.round(6 * Math.sin(x * 0.012 + 1));
+    var b3 = b2 + 14 + Math.round(4 * Math.sin(x * 0.032 + 2));
+    for (y = st; y < WH; y++) {
+      var d = y - st, dith = (bay(x, y) - 7.5) * 0.35, n = vnoise(x, y, 22, 12, 300);
       if (d === 0) c = GRS0;
-      else if (d < 3) c = hash(x, y) < 0.5 ? GND1 : SOIL1;
-      else if (y + dith < b1) c = n > 0.7 ? SOIL2 : n < 0.35 ? SOIL0 : SOIL1;
-      else if (y + dith < b2) c = n > 0.45 ? SOIL2 : (bay(x, y) < 6 ? SOIL1 : SOIL2);
-      else if (y + dith < b3) c = hash(x, y) < 0.05 ? DST0 : (bay(x, y) < 9 ? GND2 : SOIL2);
-      else c = (bay(x, y) < (y - b3) * 0.8 || n < 0.4) ? SOIL0 : SOIL1;
-      if (d > 3 && y < b1 + 2 && hash(x, y + 77) < 0.025) c = BRN0;
-      px(x, y, c);
+      else if (d < 5) c = hash(x, y) < 0.5 ? GND1 : (d < 3 ? GRS0 : SOIL1);
+      else if (y + dith < b1) c = n > 0.68 ? SOIL2 : n < 0.34 ? SOIL0 : SOIL1;
+      else if (y + dith < b2) c = n > 0.44 ? SOIL2 : (bay(x, y) < 6 ? SOIL1 : SOIL2);
+      else if (y + dith < b3) c = hash(x, y) < 0.012 ? DST0 : (bay(x, y) < 9 ? GND2 : SOIL2);
+      else c = (bay(x, y) < (y - b3) * 0.35 || n < 0.4) ? SOIL0 : SOIL1;
+      if (d > 5 && y < b1 + 4 && hash(x, y + 77) < 0.02) c = BRN0;
+      P(x, y, c);
     }
   }
   seed = 0x5a5a11 | 0;
-  for (i = 0; i < 60; i++) {
-    x = (rnd() * WW) | 0; y = SURF + 6 + ((rnd() * 80) | 0);
-    if (inRoom(x, y) || inShaft(x, y) || inShaft(x, y - 2) || inShaft(x + 4, y)) continue;
-    var sw = 2 + ((rnd() * 3) | 0);
-    rect(x, y, sw, 2, GR0); rect(x + 1, y, sw - 1, 1, GR1);
+  for (i = 0; i < 150; i++) {
+    x = (rnd() * WW) | 0; y = SURF + 12 + ((rnd() * 200) | 0);
+    if (inRoom(x, y) || inShaft(x, y) || inShaft(x, y - 6) || inShaft(x + 8, y) || (x > 30 && x < 270 && y < 270)) continue;
+    var sw = 3 + ((rnd() * 5) | 0), sh = 2 + ((rnd() * 3) | 0);
+    for (var yy = 0; yy < sh; yy++) for (var xx = 0; xx < sw; xx++) {
+      if ((yy === 0 && (xx === 0 || xx === sw - 1)) || (yy === sh - 1 && (xx === 0 || xx === sw - 1))) continue;
+      P(x + xx, y + yy, yy === 0 ? GR1 : (xx < 2 && yy === 1 ? GR2 : GR0));
+    }
   }
-  for (i = 0; i < 18; i++) {
-    x = (rnd() * WW) | 0; y = SURF + 4 + ((rnd() * 30) | 0);
-    if (inRoom(x, y) || inShaft(x, y) || inShaft(x + 2, y)) continue;
-    px(x, y, WARM); px(x + 1, y, WARM); px(x + 2, y, BRN0);
+  for (i = 0; i < 12; i++) {
+    x = (rnd() * WW) | 0; y = SURF + 8 + ((rnd() * 70) | 0);
+    if (inRoom(x, y) || inShaft(x, y) || inShaft(x + 4, y) || (x > 30 && x < 270 && y < 270)) continue;
+    R(x, y, 4, 1, WARM); P(x + 4, y, BRN0);
   }
-  var ROOTX = [12, 30, 168, 174, 252, 120, 296, 300, 312];
+  var ROOTX = [300, 455, 470, 488, 600, 735, 740, 805, 20];
   for (i = 0; i < ROOTX.length; i++) {
-    x = ROOTX[i]; var rl = 6 + ((hash(i, 9) * 8) | 0);
-    for (y = 0; y < rl; y++) px(x + ((y >> 2) & 1) - (i & 1), SURF + 3 + y, BRN0);
+    x = ROOTX[i]; var rl = 12 + ((hash(i, 9) * 22) | 0), dx = 0;
+    for (y = 0; y < rl; y++) { if (hash(i, y) < 0.3) dx += hash(y, i) < 0.5 ? -1 : 1; if (!inShaft(x + dx, SURF + 4 + y)) P(x + dx, SURF + 4 + y, BRN0); }
   }
-  // roof logs
-  for (i = 0; i < 14; i++) {
-    var lx = 15 + i * 6, ly = 84;
-    for (y = -3; y <= 3; y++) for (x = -3; x <= 3; x++) {
-      var dd = x * x + y * y; if (dd > 10) continue;
-      px(lx + x, ly + y, dd > 6 ? WOOD0 : dd > 2 ? WOOD1 : SOIL2);
-    }
-    px(lx - 1, ly - 2, WOOD1);
-  }
-  for (i = 0; i < 13; i++) {
-    var lx2 = 18 + i * 6, ly2 = 78;
-    for (y = -2; y <= 2; y++) for (x = -2; x <= 2; x++) {
-      var d2 = x * x + y * y; if (d2 > 5) continue;
-      px(lx2 + x, ly2 + y, d2 > 2 ? WOOD0 : SOIL2);
-    }
-  }
-  // room
-  for (x = ROOM_X0; x <= ROOM_X1 + 6; x++) for (y = ROOM_Y0; y < FLOOR; y++) {
-    var ldx = x - LAMPX, ldy = (y - LAMPY) * 1.3, ld = Math.sqrt(ldx * ldx + ldy * ldy) + (bay(x, y) - 7.5) * 0.5;
-    var gap = ((y - ROOM_Y0) % 5) === 4;
-    var lit = ld < 13 ? 2 : ld < 24 ? 1 : 0;
+  // ---------- dugout: room ----------
+  for (x = ROOM_X0; x <= ROOM_X1 + 13; x++) for (y = ROOM_Y0; y < FLOOR; y++) {
+    var ldx = x - LAMPX, ldy = (y - LAMPY) * 1.25, ld = Math.sqrt(ldx * ldx + ldy * ldy) + (bay(x, y) - 7.5) * 1.6;
+    var gap = ((y - ROOM_Y0) % 8) === 7, lit = ld < 46 ? 2 : ld < 92 ? 1 : 0;
     if (gap) c = lit === 2 ? WOOD0 : SOIL0;
     else {
       c = lit === 2 ? WOOD1 : lit === 1 ? WOOD0 : SOIL1;
-      if (hash(x >> 3, y / 5 | 0) < 0.25 && lit < 2) c = lit ? SOIL1 : SOIL0;
-      if (lit === 2 && hash(x, y) < 0.05) c = WARM;
+      var gr = hash(x >> 2, (y >> 1) + 3);
+      if (gr < 0.18) c = lit === 2 ? WOOD0 : lit === 1 ? SOIL2 : SOIL0;
+      if (lit === 2 && hash(x, y) < 0.04) c = WARM;
+      if (((y - ROOM_Y0) % 8) === 0 && lit) c = lit === 2 ? WARM : WOOD1;
     }
-    if (x === ROOM_X0 || y === ROOM_Y0) c = SOIL0;
-    px(x, y, c);
+    if (x > ROOM_X1) c = SOIL0;
+    P(x, y, c);
   }
-  var POSTS = [ROOM_X0 + 1, 50, 86];
+  var POSTS = [41, 118, 184, 244];
   for (i = 0; i < POSTS.length; i++) {
-    var pxx = POSTS[i];
-    rect(pxx, ROOM_Y0, 3, FLOOR - ROOM_Y0, WOOD0);
-    rect(pxx, ROOM_Y0, 1, FLOOR - ROOM_Y0, Math.abs(pxx + 1 - LAMPX) < 14 ? WARM : WOOD1);
-    px(pxx + 2, ROOM_Y0 + 6, SOIL0); px(pxx + 2, ROOM_Y0 + 19, SOIL0);
-  }
-  for (x = ROOM_X0; x < STAIR_X0; x++) {
-    px(x, FLOOR, (x % 9 === 0) ? SOIL0 : (Math.abs(x - LAMPX) < 16 ? WOOD1 : WOOD0));
-    px(x, FLOOR + 1, WOOD0);
-  }
-  // stair shaft + door light
-  for (x = STAIR_X0 - 4; x < STAIR_X0 + 4 * STAIR_N; x++) {
-    var top = x < STAIR_X0 ? ROOM_Y0 : SURF;
-    var bot = x < STAIR_X0 ? FLOOR : treadY(x);
-    for (y = top; y < bot; y++) {
-      c = SOIL0;
-      if (x >= STAIR_X0 && (x % 6) !== 0 && y > SURF + 1) c = (hash(x / 6 | 0, y >> 2) < 0.5) ? SOIL1 : SOIL0;
-      if ((x % 6) === 5 && x >= STAIR_X0) c = WOOD0;
-      var spill = (y - 96) - (x - STAIR_X0) * 0.9 + (bay(x, y) - 7.5) * 0.6;
-      if (spill > 4 && x < STAIR_X0 + 22) c = (x % 6) === 5 ? WOOD1 : (spill > 12 ? WOOD0 : (bay(x, y) < 8 ? WOOD0 : c));
-      px(x, y, c);
+    var p0 = POSTS[i], lit2 = Math.abs(p0 + 3 - LAMPX) < 60;
+    for (y = ROOM_Y0; y < FLOOR; y++) for (x = 0; x < 6; x++) {
+      c = x === 0 || x === 5 ? SOIL0 : WOOD0;
+      if (lit2 && ((p0 < LAMPX && x === 4) || (p0 > LAMPX && x === 1))) c = WARM;
+      else if (x === 2 && hash(p0, y >> 2) < 0.4) c = WOOD1;
+      P(p0 + x, y, c);
     }
+  }
+  for (x = ROOM_X0 - 4; x < STAIR_X0; x++) {                        // boardwalk floor
+    var pl = (x % 15) === 0;
+    P(x, FLOOR, pl ? SOIL0 : (Math.abs(x - LAMPX) < 60 ? WOOD1 : WOOD0)); P(x, FLOOR + 1, pl ? SOIL0 : WOOD0); P(x, FLOOR + 2, SOIL0);
+  }
+  // ceiling slabs, two rows of logs, waterproofing film
+  for (x = 34; x <= 268; x++) for (y = 258; y < ROOM_Y0; y++) P(x, y, y === 263 ? SOIL0 : (Math.abs(x - LAMPX) < 50 && y > 260 ? WOOD1 : (hash(x >> 3, y) < 0.3 ? SOIL2 : WOOD0)));
+  function logEnd(cx, cy, r) {
+    for (var yy = -r - 1; yy <= r + 1; yy++) for (var xx = -r - 1; xx <= r + 1; xx++) {
+      var dd = Math.sqrt(xx * xx + yy * yy); if (dd > r + 0.4) continue;
+      var cc = dd > r - 1 ? BRN0 : dd > r - 2.2 ? WOOD0 : ((Math.floor(dd * 1.4) & 1) ? WOOD1 : SOIL2);
+      if (dd < 1) cc = SOIL0;
+      if (dd > r - 1.6 && xx + yy < -r * 0.8) cc = WOOD1;
+      P(cx + xx, cy + yy, cc);
+    }
+  }
+  for (x = 38; x <= 262; x += 13) logEnd(x, 251, 6);
+  for (x = 44; x <= 256; x += 13) logEnd(x, 238, 6);
+  for (x = 32; x <= 270; x++) { P(x, 229, SOIL2); P(x, 230, GR0); P(x, 231, BLK); }
+  // stove pipe up through the roof, spark screen + branches on top
+  for (y = 186; y < 326; y++) { if (y >= ROOM_Y0 || y < 258) { P(50, y, GR0); P(51, y, GR1); P(52, y, GR1); P(53, y, BLK); } }
+  for (x = 46; x <= 57; x++) for (y = 182; y <= 186; y++) P(x, y, ((x + y) & 1) ? GR1 : GR0);
+  // ---------- mound: turf, lapnik branches, EW antenna + dish under the net ----------
+  for (x = 26; x <= 266; x++) { var mt = moundTop(x); for (y = mt; y < SURF + 2; y++) P(x, y, y === mt ? GRS0 : y < mt + 3 ? GRS1 : SOIL1); }
+  function branch(x0, y0, len, dir) {
+    for (var t = 0; t < len; t++) {
+      var bx2 = x0 + t * dir, by2 = y0 - Math.round(t * 0.25);
+      P(bx2, by2, TREE);
+      if (t % 2 === 0) { P(bx2 - dir, by2 - 1, GRS0); P(bx2 - dir, by2 + 1, GRS0); P(bx2 - 2 * dir, by2 - 2, TREE); P(bx2 - 2 * dir, by2 + 2, TREE); }
+      if (t % 3 === 0) P(bx2, by2 - 1, hash(bx2, by2) < 0.6 ? SNOW : GRS1);
+    }
+  }
+  // dish
+  for (y = 0; y < 12; y++) { var w2 = Math.round(Math.sqrt(36 - (y - 6) * (y - 6))); for (x = -w2; x <= 0; x++) P(118 + x - y * 0.3, 178 + y, x === -w2 ? GR2 : GR0); }
+  R(117, 186, 2, 8, GR0); LN(118, 184, 126, 179, GR1);
+  // EW antenna block
+  R(172, 174, 6, 19, GR0); R(172, 174, 1, 19, GR1); for (y = 176; y < 192; y += 3) R(170, y, 10, 1, GR1);
+  // net over the equipment
+  for (x = 96; x <= 196; x++) {
+    var tent = Math.min(Math.abs(x - 116), Math.abs(x - 175)), ny = Math.round(170 + tent * 0.55 + 2 * Math.sin(x * 0.4));
+    var mt2 = moundTop(x); if (ny > mt2 - 1) ny = mt2 - 1;
+    for (y = ny; y < ny + 3; y++) { var hh = hash(x, y + 9); if (((x + y) & 1) === 0 || hh < 0.3) P(x, y, hh < 0.15 ? KHD : hh < 0.55 ? OL0 : GRS0); }
+    if (hash(x, 4) < 0.5) P(x, ny - 1, SNOW);
+    if (hash(x, 3) < 0.25) P(x, ny + 3, OL0);
+  }
+  branch(30, 196, 22, 1); branch(70, 193, 26, 1); branch(150, 192, 20, -1); branch(210, 194, 24, 1); branch(250, 198, 16, -1); branch(60, 185, 12, -1);
+  // cables from the dish and antenna down to the ceiling
+  for (y = 194; y < 258; y++) { if (y < 229 || y > 231) { P(121 + ((y >> 3) & 1), y, BLK); P(176, y, BLK); } }
+  // ---------- stair shaft: wattle revetment, treads ----------
+  for (x = STAIR_X0; x < STAIR_END; x++) for (y = SURF; y < treadY(x); y++) {
+    c = SOIL0;
+    if ((x - STAIR_X0) % 9 === 0) c = WOOD0;
+    else if (((y >> 2) + ((x / 9) | 0)) & 1) c = (hash(x, y >> 1) < 0.5) ? SOIL1 : SOIL0;
+    P(x, y, c);
   }
   for (i = 0; i < STAIR_N; i++) {
-    rect(STAIR_X0 + 4 * i, 120 - 4 * i, 4, 1, i < 2 ? WARM : i < 9 ? WOOD1 : WOOD0);
-    if (i >= 9) px(STAIR_X0 + 4 * i, 120 - 4 * i, RIM);
-    rect(STAIR_X0 + 4 * i, 121 - 4 * i, 4, 1, WOOD0);
-    px(STAIR_X0 + 4 * i, 121 - 4 * i, SOIL0);
+    var sx0 = STAIR_X0 + 10 * i, ty = 340 - 10 * i;
+    R(sx0, ty, 10, 1, i >= 9 ? WOOD0 : WOOD1); R(sx0, ty + 1, 10, 1, WOOD0); R(sx0, ty + 2, 1, 8, WOOD0);
+    if (i >= 8) { for (x = 1; x < 10; x++) if (hash(sx0 + x, ty) < 0.55) P(sx0 + x, ty - 1, hash(x, i) < 0.6 ? SNOW : SNOWD); P(sx0, ty, RIM); }
   }
-  rect(86, ROOM_Y0 - 1, 7, 2, WOOD0); rect(86, ROOM_Y0 - 1, 7, 1, WOOD1);
-  rect(91, ROOM_Y0, 2, FLOOR - ROOM_Y0, WOOD0); px(91, ROOM_Y0 + 4, WARM); px(91, ROOM_Y0 + 14, WARM);
-  rect(88, FLOOR - 1, 5, 1, WOOD1);
-  // mound + sandbags
-  for (x = 8; x <= 92; x++) { var my = moundY(x); for (y = my; y < SURF; y++) px(x, y, y === my ? GRS0 : SOIL1); }
-  for (var rw = 0; rw < 2; rw++) for (x = 22 + rw * 4; x < 80 - rw * 4; x += 8) {
-    var by = SURF - 7 - rw * 3;
-    rect(x, by, 7, 3, KHD); rect(x + 1, by, 5, 1, KHA); px(x, by + 2, BRN0); px(x + 6, by + 2, BRN0);
-    if (x < 50) px(x + 1, by, RIM);
+  // door frame
+  for (y = 258; y < FLOOR; y++) { R(246, y, 4, 1, WOOD0); P(246, y, WOOD1); R(262, y, 3, 1, WOOD0); }
+  R(244, 256, 24, 3, WOOD0); R(244, 256, 24, 1, WOOD1);
+  // ---------- net over the entrance, pole ----------
+  R(336, 170, 2, 30, WOOD0);
+  for (x = 260; x <= 420; x++) {
+    var ny2 = x < 337 ? Math.round(196 - (x - 260) * 0.33 + 3 * Math.sin((x - 260) / 77 * Math.PI)) : Math.round(170 - (x - 337) * 0.15 + 2 * Math.sin((x - 337) / 83 * Math.PI));
+    for (y = ny2; y < ny2 + 3; y++) { var h3 = hash(x, y + 19); if (((x + y) & 1) === 0 || h3 < 0.3) P(x, y, h3 < 0.15 ? KHD : h3 < 0.55 ? OL0 : GRS0); }
+    if (hash(x, 7) < 0.45) P(x, ny2 - 1, SNOW);
+    if (hash(x, 8) < 0.12) { P(x, ny2 + 3, OL0); P(x, ny2 + 4, GRS0); }
   }
-  for (x = 156; x < 170; x += 7) { rect(x, SURF - 3, 6, 3, KHD); rect(x + 1, SURF - 3, 4, 1, KHA); }
-  rect(158, SURF - 6, 6, 3, KHD); rect(159, SURF - 6, 4, 1, KHA);
-  // camo net
-  rect(126, SURF - 18, 1, 18, WOOD0); rect(140, SURF - 16, 1, 16, WOOD0);
-  for (x = 86; x <= 150; x++) {
-    var ny = x < 126 ? Math.round(SURF - 7 - (x - 86) * 0.27) : x < 140 ? SURF - 18 + ((x - 126) / 7 | 0) : Math.round(SURF - 16 + (x - 140) * 1.4);
-    for (y = ny; y < ny + 3; y++) {
-      if (y >= SURF) continue;
-      var hh = hash(x, y + 9);
-      if (((x + y) & 1) === 0 || hh < 0.3) px(x, y, hh < 0.15 ? KHD : hh < 0.55 ? OL0 : GRS0);
-    }
-    if (hash(x, 3) < 0.3) px(x, ny + 3, OL0);
+  // ---------- tree hiding the antenna; cable down the trunk and buried ----------
+  for (y = 102; y < SURF; y++) P(446, y, GR1);
+  R(443, 112, 7, 1, GR1); R(444, 122, 5, 1, GR1);
+  for (y = 118; y < SURF; y++) { var tw = y > 186 ? 4 : 3; for (x = -tw; x <= tw; x++) P(TREEX + x, y, x === -tw ? GR0 : x < 0 ? TREE : (hash(x, y) < 0.3 ? GR0 : TREE)); }
+  LN(TREEX, 160, TREEX - 18, 140, TREE); LN(TREEX, 150, TREEX + 20, 132, TREE); LN(TREEX, 172, TREEX + 16, 160, TREE);
+  for (y = -34; y <= 30; y++) for (x = -40; x <= 40; x++) {
+    var e = (x * x) / 1500 + (y * y) / 1000 + (vnoise(x + 99, y + 99, 7, 6, 5) - 0.5) * 0.6;
+    if (e > 1) continue;
+    var hole = hash(x + 400, y) < 0.06;
+    if (hole) continue;
+    c = (x + y < -26 && e > 0.35) ? GRS1 : (vnoise(x, y, 5, 4, 8) > 0.55 ? GRS0 : TREE);
+    if (e > 0.7 && y < -6 && hash(x, y + 1) < 0.45) c = hash(x, y + 2) < 0.5 ? SNOW : SNOWD;
+    P(TREEX + x, 130 + y, c);
   }
-  // dugout antenna + cable through the earth into the room
-  rect(ANT_X, SURF - 24, 1, 24, GR1); rect(ANT_X - 2, SURF - 22, 5, 1, GR1); rect(ANT_X - 1, SURF - 18, 3, 1, GR1);
-  px(ANT_X, SURF - 25, GR2);
-  for (y = SURF; y <= ROOM_Y0 + 1; y++) px(ANT_X + 1 + Math.round((y - SURF) * 0.45), y, BLK);
-  for (x = ROOM_X0; x <= 70; x++) px(x, ROOM_Y0 + 1 + Math.round(1.5 * Math.sin((x - ROOM_X0) / 54 * Math.PI)), BLK);
-  rect(70, ROOM_Y0 + 1, 1, 8, BLK);
-  rect(62, 99, 16, 1, WOOD1); rect(62, 100, 16, 1, WOOD0); px(63, 101, WOOD0); px(76, 101, WOOD0);
-  rect(66, 93, 8, 6, OL0); rect(66, 93, 8, 1, OL1); px(68, 95, GR2); px(71, 95, GR2); rect(67, 97, 6, 1, GR0);
-  // pad
-  rect(GXD - 7, SURF, 15, 1, WOOD1); rect(GXD - 7, SURF + 1, 15, 1, WOOD0);
-  // neighbour's foxhole
-  for (x = 214; x <= 224; x++) for (y = SURF; y < SURF + 12; y++) px(x, y, (x === 214 || x === 224) ? SOIL1 : SOIL0);
-  rect(215, SURF + 11, 9, 1, SOIL1);
-  rect(210, SURF - 3, 6, 3, KHD); rect(211, SURF - 3, 4, 1, KHA);
-  rect(223, SURF - 3, 6, 3, KHD); rect(224, SURF - 3, 4, 1, KHA);
-  // repeater mast
-  rect(MAST_X, SURF - 34, 1, 34, GR1); px(MAST_X, SURF - 35, GR2);
-  rect(MAST_X - 2, SURF - 30, 5, 1, GR1); rect(MAST_X - 3, SURF - 24, 7, 1, GR0);
-  lineP(MAST_X, SURF - 28, MAST_X - 9, SURF - 1, GR0); lineP(MAST_X, SURF - 28, MAST_X + 8, SURF - 1, GR0);
-  rect(MAST_X - 2, SURF - 4, 5, 4, OL0); rect(MAST_X - 2, SURF - 4, 5, 1, OL1);
-  // barbed-wire stakes
-  for (x = 266; x <= 302; x += 12) { rect(x, SURF - 6, 1, 6, WOOD0); px(x, SURF - 6, WOOD1); }
-  for (x = 266; x < 302; x++) { px(x, SURF - 5 + ((x >> 1) & 1), GR0); if ((x & 3) === 0) px(x, SURF - 3, GR0); }
-  // lone tree
-  rect(300, SURF - 14, 2, 14, TREE); px(299, SURF - 1, TREE); px(302, SURF - 1, TREE);
-  for (y = -9; y <= 7; y++) for (x = -9; x <= 9; x++) {
-    var e2 = (x * x) / 81 + (y * y) / 64;
-    if (e2 > 1 || hash(x + 300, y) < 0.1 * e2 * 4) continue;
-    c = (x + y < -7 && e2 > 0.45) ? GRS1 : (hash(x, y + 300) < 0.25 ? GRS0 : TREE);
-    px(301 + x, SURF - 22 + y, c);
-  }
-  // bushes
-  var BU = [172, 7, 252, 6, 44, 5, 316, 5];
+  for (y = 120; y < SURF; y++) P(444, y, BLK);
+  LN(444, 204, 300, 344, BLK); LN(300, 344, 264, 346, BLK);
+  for (x = 236; x <= 262; x++) P(x, 300 + Math.round(Math.abs(x - 249) * 0.1), BLK);
+  for (x = 177; x < 236; x++) P(x, 301 + Math.round(2 * Math.sin((x - 177) / 59 * Math.PI)), BLK);
+  // ---------- surface to the right ----------
+  for (x = 545; x <= 567; x++) { P(x, SURF, (x & 1) ? KHD : GRS0); if (hash(x, 1) < 0.3) P(x, SURF - 1, GRS1); }
+  P(545, SURF - 2, WOOD0); P(567, SURF - 2, WOOD0);
+  for (x = 640; x <= 664; x++) for (y = SURF; y < SURF + 26; y++) P(x, y, (x === 640 || x === 664) ? SOIL1 : (y > SURF + 23 ? SOIL1 : SOIL0));
+  branch(632, 196, 14, 1); branch(672, 196, 12, -1);
+  for (x = 690; x <= 760; x += 14) { R(x, SURF - 12, 2, 12, WOOD0); P(x, SURF - 12, WOOD1); }
+  for (x = 688; x < 762; x++) { var ph = (x - 688) / 5; P(x, Math.round(SURF - 8 + 3 * Math.sin(ph * 2.2)), GR1); P(x, Math.round(SURF - 4 + 2.5 * Math.cos(ph * 2.6)), GR0); }
+  // lone bare tree with the owl's branch
+  for (y = 120; y < SURF; y++) R(OWLX - 3 - (y > 190 ? 1 : 0), y, y > 190 ? 7 : 5, 1, TREE);
+  LN(OWLX, 150, OWLX + 22, 146, TREE); LN(OWLX, 151, OWLX + 22, 147, TREE); LN(OWLX, 140, OWLX - 24, 118, TREE); LN(OWLX - 12, 129, OWLX - 22, 132, TREE);
+  LN(OWLX, 130, OWLX + 14, 104, TREE); LN(OWLX + 6, 120, OWLX + 22, 116, TREE); LN(OWLX - 1, 124, OWLX - 6, 96, TREE);
+  for (x = OWLX + 2; x < OWLX + 22; x += 3) P(x, 145, SNOW);
+  var BU = [480, 9, 600, 8, 705, 6, 808, 7, 22, 7];
   for (i = 0; i < BU.length; i += 2) {
-    var bx0 = BU[i], br0 = BU[i + 1], gy0 = surfY(bx0);
-    for (y = -br0; y <= 0; y++) for (x = -br0 - 2; x <= br0 + 2; x++) {
-      if (x * x * 0.55 + y * y > br0 * br0 || hash(bx0 + x, y + 70) < 0.12) continue;
-      c = (y < -br0 + 2 && x < 0) ? GRS1 : (hash(bx0 + x, y) < 0.3 ? TREE : GRS0);
-      px(bx0 + x, gy0 - 1 + y, c);
+    var bx0 = BU[i], br0 = BU[i + 1], gy0 = surfTop(bx0);
+    for (y = -br0; y <= 0; y++) for (x = -br0 - 3; x <= br0 + 3; x++) {
+      if (x * x * 0.5 + y * y > br0 * br0 || hash(bx0 + x, y + 70) < 0.12) continue;
+      c = (y < -br0 + 3 && hash(x, y) < 0.55) ? SNOW : (x + y < -br0 * 0.6 ? GRS1 : (hash(bx0 + x, y) < 0.3 ? TREE : GRS0));
+      P(bx0 + x, gy0 - 1 + y, c);
     }
   }
+  // grass + snow on every open surface
   seed = 0x77aa13 | 0;
-  for (i = 0; i < 100; i++) {
-    x = (rnd() * WW) | 0;
-    if (x > 86 && x < 156) continue;
-    if (Math.abs(x - GXD) < 10) continue;
-    var hb = 1 + ((rnd() * 3) | 0), gy = surfY(x);
-    rect(x, gy - hb, 1, hb, GRS0); if (rnd() < 0.5) px(x, gy - hb, GRS1);
+  for (x = 0; x < WW; x++) {
+    if (x >= STAIR_X0 && x < STAIR_END) continue;
+    var gy = surfTop(x);
+    var sn = vnoise(x, 0, 9, 1, 21); if (sn > 0.45 && hash(x, 5) < 0.8) P(x, gy - 1, sn > 0.7 && hash(x, 6) < 0.6 ? SNOW : SNOWD);
+    if (hash(x, 11) < 0.22 && Math.abs(x - GXD) > 14) { var hb = 2 + ((hash(x, 12) * 5) | 0); for (y = 1; y <= hb; y++) P(x, gy - y, y === hb ? GRS1 : GRS0); if (hash(x, 13) < 0.5) P(x, gy - hb - 1, SNOW); }
   }
-  // furniture
-  rect(18, 108, 23, 2, WOOD1); rect(18, 109, 23, 1, WOOD0); rect(19, 110, 2, 14, WOOD0); rect(38, 110, 2, 14, WOOD0);
-  rect(19, 117, 21, 1, WOOD0);
-  rect(20, 106, 10, 2, GR1); px(20, 106, GR2);
-  rect(21, 98, 8, 8, GR0); rect(21, 98, 8, 1, GR1);
-  rect(48, 119, 10, 5, KHD); rect(48, 119, 10, 1, KHA); px(52, 121, BRN0); px(53, 121, BRN0);
-  rect(64, 117, 13, 7, GR0); rect(64, 117, 13, 1, GR1); rect(68, 119, 4, 1, GR2);
-  rect(79, 115, 5, 9, OL0); rect(79, 115, 5, 1, OL1); rect(80, 113, 2, 2, GR0);
-  rect(LAMPX, ROOM_Y0, 1, 4, GR0); rect(LAMPX - 1, ROOM_Y0 + 3, 3, 1, GR1);
+  // ---------- furniture ----------
+  for (y = 326; y < FLOOR; y++) for (x = 44; x <= 58; x++) P(x, y, x === 44 ? GR1 : x === 58 ? BLK : (y === 326 ? GR2 : GR0));
+  R(47, 345, 2, 5, BLK); R(55, 345, 2, 5, BLK);
+  R(47, 321, 9, 5, GR1); R(47, 321, 9, 1, GR2); R(56, 322, 3, 1, GR1); R(48, 319, 1, 2, GR0); R(55, 319, 1, 2, GR0); R(48, 318, 8, 1, GR0);
+  R(60, 326, 65, 3, WOOD1); R(60, 328, 65, 1, WOOD0); R(62, 329, 3, 21, WOOD0); R(120, 329, 3, 21, WOOD0);
+  for (x = 64; x <= 118; x++) for (y = 318; y < 326; y++) {
+    var fold = Math.sin(x * 0.55) * 1.2, top = 319 + Math.round(fold * 0.6);
+    if (y < top) continue;
+    P(x, y, y === top ? OL2 : (hash(x >> 2, y) < 0.3 ? OL0 : OL1));
+  }
+  R(64, 319, 10, 7, KHD); R(64, 319, 10, 1, KHA);
+  R(100, 340, 7, 10, SNOWD); R(100, 340, 7, 1, MOONS); R(102, 338, 3, 2, BLU); R(108, 342, 6, 8, SNOWD); R(110, 340, 2, 2, BLU);
+  R(122, 278, 2, 3, GR1); for (y = 281; y < 306; y++) R(119 - Math.round((y - 281) * 0.12), y, 8 + Math.round((y - 281) * 0.25), 1, (y & 3) ? OL1 : OL0);
+  R(128, 322, 51, 2, WOOD1); R(128, 324, 51, 1, WOOD0); R(130, 325, 3, 25, WOOD0); R(174, 325, 3, 25, WOOD0); R(131, 338, 45, 2, WOOD0);
+    R(166, 316, 11, 6, OL0); R(166, 316, 11, 1, OL1); R(168, 318, 3, 3, GR2); R(172, 318, 3, 1, GR1);
+  R(132, 320, 19, 2, GR1); P(132, 320, GR2);
+  for (x = 128; x <= 176; x++) for (y = 276; y <= 299; y++) {
+    var edge = x === 128 || x === 176 || y === 276 || y === 299;
+    c = edge ? KHD : (vnoise(x, y, 9, 7, 55) > 0.55 ? KHA : MOONS);
+    if (!edge && ((x - 128) % 12 === 0 || (y - 276) % 8 === 0)) c = KHA;
+    if (!edge && Math.abs(vnoise(x, y, 14, 10, 61) - 0.5) < 0.02) c = KHD;
+    P(x, y, c);
+  }
+  LN(132, 296, 172, 280, WARM); P(150, 287, RED); P(151, 287, RED); P(160, 283, BLU); P(140, 292, RED); P(129, 277, BLK); P(175, 277, BLK);
+  R(184, 336, 15, 14, KHD); R(184, 336, 15, 1, KHA); R(184, 342, 15, 1, VS1); R(189, 339, 5, 1, VS1);
+  R(200, 300, 29, 2, WOOD1); R(200, 302, 29, 1, WOOD0); LN(203, 303, 207, 307, WOOD0); LN(226, 303, 222, 307, WOOD0);
+  R(204, 291, 21, 9, GR0); R(204, 291, 21, 1, GR1); R(204, 299, 21, 1, BLK);
+  for (y = ROOM_Y0; y < 272; y++) P(LAMPX, y, GR0);
+  R(LAMPX - 3, 272, 7, 1, GR1); R(LAMPX - 4, 273, 9, 2, GR0); R(LAMPX - 4, 273, 9, 1, GR2);
+  worldC = toCanvas(GB);
 }
 
-/* ---------------- Thermal FPV map (white-hot) ---------------- */
-var OWN_Y = FMH - 30;
+/* ---- thermal FPV map (white-hot), own position thermally masked ---- */
+var FMW = 640, FMH = 1300, OWN_Y = FMH - 60;
 function genFPV() {
-  g = fpvC.getContext('2d');
-  var x, y, i;
-  for (y = 0; y < FMH; y++) for (x = 0; x < FMW; x++) {
-    var n = vnoise(x, y, 16, 16, 900) + (bay(x, y) - 7.5) * 0.012, c = TH1;
-    if (n < 0.3) c = TH0; else if (n > 0.74) c = TH2;
-    if (c === TH1 && n > 0.42 && n < 0.66 && ((x + (y >> 1)) % 7) === 0) c = TH0;
-    px(x, y, c);
+  GB = new PBuf(FMW, FMH);
+  var x, y, i, py = 0;
+  seed = 0x445566 | 0;
+  // agricultural plots: each with its own night temperature and furrow direction
+  var bounds = [];
+  while (py < FMH) {
+    var ph = 70 + ((rnd() * 120) | 0), pxx = 0;
+    while (pxx < FMW) {
+      var pw = 70 + ((rnd() * 180) | 0), r0 = rnd(), base = r0 < 0.3 ? TH0 : r0 < 0.8 ? TH1 : TH2, dir = rnd() < 0.5 ? 0 : 1, pitch = 6 + ((rnd() * 5) | 0);
+      for (y = py; y < py + ph && y < FMH; y++) for (x = pxx; x < pxx + pw && x < FMW; x++) {
+        var c = base, f = dir ? (x % pitch) : (y % pitch);
+        if (f === 0 && hash(x, y) < 0.5) c = base === TH0 ? TH1 : base - 1;
+        var n = hash(x >> 1, y >> 1); if (n < 0.08) c = TH1; else if (n > 0.97) c = TH2;
+        if (vnoise(x, y, 30, 30, 900) > 0.78) c = c === TH0 ? TH1 : c;
+        P(x, y, c);
+      }
+      for (x = pxx; x < pxx + pw; x++) P(x, py, TH0);
+      for (y = py; y < py + ph; y++) P(pxx, y, TH0);
+      pxx += pw;
+    }
+    bounds.push(py); py += ph;
   }
   function blob(cx, cy, r) {
     for (var yy = -r; yy <= r; yy++) for (var xx = -r; xx <= r; xx++) {
       var d = xx * xx + yy * yy; if (d > r * r) continue;
-      px(cx + xx, cy + yy, d > (r - 1) * (r - 1) ? TH1 : ((xx + yy < -r * 0.5) ? TH3 : TH2));
+      P(cx + xx, cy + yy, d > (r - 1) * (r - 1) ? TH1 : ((xx + yy < -r * 0.5) ? TH4 : TH3));
     }
   }
-  seed = 0x445566 | 0;
-  var BELTS = [40, 150, 300, 380];
-  for (i = 0; i < BELTS.length; i++) for (x = -4; x < FMW + 4; x += 3) blob(x, BELTS[i] + Math.round(4 * Math.sin(x * 0.07 + i)) + ((rnd() * 4) | 0), 2 + ((rnd() * 3) | 0));
-  for (i = 0; i < 30; i++) blob(4 + ((rnd() * 40) | 0), 190 + ((rnd() * 70) | 0), 2 + ((rnd() * 3) | 0));
-  for (y = 0; y < FMH; y++) {                                       // road keeps the day's heat
-    var rx = Math.round(140 + 34 * Math.sin(y * 0.012) + 9 * Math.sin(y * 0.05));
-    rect(rx - 2, y, 1, 1, TH2); rect(rx - 1, y, 3, 1, TH3); rect(rx + 2, y, 1, 1, TH2);
+  for (i = 0; i < bounds.length; i++) if (hash(i, 31) < 0.45) for (x = -4; x < FMW + 4; x += 4) if (hash(x, i) < 0.85) blob(x, bounds[i] + ((hash(x, i + 9) * 4) | 0) - 2, 3 + ((hash(i, x) * 3) | 0));
+  for (i = 0; i < 70; i++) blob(10 + ((rnd() * 70) | 0), 470 + ((rnd() * 160) | 0), 3 + ((rnd() * 4) | 0));
+  for (y = 0; y < FMH; y++) {
+    var rx = Math.round(370 + 85 * Math.sin(y * 0.005) + 22 * Math.sin(y * 0.02));
+    for (x = -4; x <= 4; x++) P(rx + x, y, Math.abs(x) > 2 ? TH2 : (hash(rx + x, y) < 0.1 ? TH4 : TH3));
   }
-  for (i = 0; i < 20; i++) {                                        // craters with cold water
-    var cx = 10 + ((rnd() * 220) | 0), cy = 20 + ((rnd() * 360) | 0), r = 2 + ((rnd() * 3) | 0);
-    for (y = -r - 1; y <= r + 1; y++) for (x = -r - 1; x <= r + 1; x++) {
+  for (i = 0; i < 26; i++) {
+    var cx = 20 + ((rnd() * 600) | 0), cy = 40 + ((rnd() * 1080) | 0), r = 2 + ((rnd() * 3) | 0);
+    for (y = -r - 2; y <= r + 2; y++) for (x = -r - 2; x <= r + 2; x++) {
       var dd = Math.sqrt(x * x + y * y);
-      if (dd <= r - 0.5) px(cx + x, cy + y, TH0);
-      else if (dd <= r + 0.7) px(cx + x, cy + y, (x + y < 0) ? TH3 : TH2);
+      if (dd <= r - 0.5) P(cx + x, cy + y, TH0); else if (dd <= r + 1.2) P(cx + x, cy + y, (x + y < 0) ? TH3 : TH2);
     }
   }
-  // ruined farmstead
-  rect(56, 110, 20, 1, TH3); rect(56, 110, 1, 12, TH3); rect(75, 110, 1, 8, TH3); rect(56, 121, 12, 1, TH3);
-  for (y = 111; y < 121; y++) for (x = 57; x < 75; x++) if (hash(x, y) < 0.25) px(x, y, TH2);
-  // own position: trench, net over the dugout (warm door), pad, mast
-  for (x = 10; x < 230; x++) {
-    var zz = ((x >> 3) & 1) ? (x & 7) : 7 - (x & 7);
-    rect(x, OWN_Y - 10 + zz, 1, 2, TH0); px(x, OWN_Y - 11 + zz, TH2);
-  }
-  for (y = 0; y < 10; y++) for (x = 0; x < 16; x++) px(104 + x, OWN_Y + y, ((x + y) & 1) ? TH2 : TH1);
-  for (y = -3; y <= 3; y++) for (x = -3; x <= 3; x++) { var hd = x * x + y * y; if (hd <= 9) px(122 + x, OWN_Y + 6 + y, hd <= 2 ? TH5 : hd <= 5 ? TH4 : (bay(x, y) < 8 ? TH3 : TH2)); }
-  rect(146, OWN_Y + 5, 6, 6, TH2); rect(147, OWN_Y + 6, 4, 4, TH3);
-  rect(178, OWN_Y + 10, 3, 3, TH4); px(179, OWN_Y + 11, TH5);
+  R(140, 270, 50, 2, TH3); R(140, 270, 2, 30, TH3); R(188, 270, 2, 20, TH3); R(140, 298, 30, 2, TH3); R(150, 280, 2, 18, TH3);
+  for (y = 272; y < 298; y++) for (x = 142; x < 188; x++) if (hash(x, y) < 0.2) P(x, y, TH2);
+  for (x = 20; x < 620; x++) { var zz = ((x >> 4) & 1) ? (x & 15) : 15 - (x & 15); R(x, OWN_Y - 30 + zz, 1, 3, TH0); P(x, OWN_Y - 31 + zz, TH2); }
+  for (y = 0; y < 22; y++) for (x = 0; x < 40; x++) if (((x + y) & 3) === 0) P(270 + x, OWN_Y + y, TH2);
+  P(282, OWN_Y + 4, TH3); P(283, OWN_Y + 4, TH2);
+  blob(330, OWN_Y + 8, 9); blob(340, OWN_Y - 4, 6);
+  fpvC = toCanvas(GB);
 }
 
-/* ---------------- Stars ---------------- */
-var NS = 50;
-var sX = new Int16Array(NS), sY = new Int16Array(NS), sB = new Uint8Array(NS), sPh = new Float32Array(NS), sSp = new Float32Array(NS);
-function genStars() {
-  var data = skyC.getContext('2d').getImageData(0, 0, SKW, SKH).data;
-  function isSky(x, y) { var i = (y * SKW + x) * 4; return data[i] === 6 || data[i] === 11 || data[i] === 18; }
-  seed = 0x13579b | 0;
-  var n = 0, guard = 0;
-  while (n < NS && guard++ < 8000) {
-    var x = 1 + ((rnd() * (SKW - 2)) | 0), y = (rnd() * 56) | 0;
-    var dx = x - MOX, dy = y - MOY; if (dx * dx + dy * dy < 140) continue;
-    if (!isSky(x, y) || !isSky(x + 1, y) || !isSky(x - 1, y)) continue;
-    sX[n] = x; sY[n] = y; sB[n] = rnd() < 0.35 ? 1 : 0; sPh[n] = rnd() * 6.283; sSp[n] = 0.6 + rnd() * 2.2; n++;
-  }
-}
-
-/* ---------------- Overlays ---------------- */
-var STATIC = [], VIGN = mk(W, H), DOFC = mk(W, H);
+/* ---- overlays: static, vignette, depth-of-field veil ---- */
+var STATIC = [], VIGN, DOFC;
 function genOverlays() {
   seed = 0x9911 | 0;
   for (var k = 0; k < 3; k++) {
-    var c = mk(W, H), sg = c.getContext('2d');
-    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
-      var r = rnd(); sg.fillStyle = PAL[r < 0.3 ? TH0 : r < 0.55 ? TH1 : r < 0.75 ? TH2 : r < 0.9 ? TH4 : TH5]; sg.fillRect(x, y, 1, 1);
-    }
-    STATIC.push(c);
+    GB = new PBuf(W, H);
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) { var r = rnd(); P(x, y, r < 0.3 ? TH0 : r < 0.55 ? TH1 : r < 0.75 ? TH2 : r < 0.9 ? TH4 : TH5); }
+    STATIC.push(toCanvas(GB));
   }
-  var vg = VIGN.getContext('2d'); vg.fillStyle = PAL[BLK];
-  var dg = DOFC.getContext('2d'); dg.fillStyle = PAL[SKY1];
+  GB = new PBuf(W, H);
   for (var yy = 0; yy < H; yy++) for (var xx = 0; xx < W; xx++) {
-    var nx = (xx - 95.5) / 96, ny = (yy - 53.5) / 54, d = nx * nx * nx * nx + ny * ny * ny * ny;
-    if (d * 18 > bay(xx, yy) + 6) vg.fillRect(xx, yy, 1, 1);
-    if (bay(xx, yy) < 3) dg.fillRect(xx, yy, 1, 1);                // dithered depth-of-field veil
+    var nx = (xx - W / 2) / (W / 2), ny = (yy - H / 2) / (H / 2), d = nx * nx * nx * nx + ny * ny * ny * ny;
+    if (d * 18 > bay(xx, yy) + 6) P(xx, yy, BLK);
   }
+  VIGN = toCanvas(GB);
+  GB = new PBuf(W, H);
+  for (yy = 0; yy < H; yy++) for (xx = 0; xx < W; xx++) if (bay(xx, yy) < 3) P(xx, yy, SKY1);
+  DOFC = toCanvas(GB);
 }
-
-genSky(); genTrees(); genWorld(); genFPV(); genStars(); genOverlays();
-
-var TUFT = [160, 171, 181, 190, 206, 214, 228, 240, 254, 2, 60, 272, 285, 309];
-var NT = TUFT.length, tX = new Int16Array(TUFT);
+genSky(); genTrees(); genWorld(); genFPV(); genOverlays();
 
 /* =====================================================================
-   PARTICLES (pooled)  0 dust, 2 mote, 3/4 red/green spark, 6 soil grain
+   PARTICLES (pooled). 0 dust, 2 mote, 3/4 red/green spark, 6 soil grain,
+   7 snow, 8 water splash, 9 steam, 10 breath
    ===================================================================== */
-var NP = 128;
+var NP = 420;
 var pX = new Float32Array(NP), pY = new Float32Array(NP), pVX = new Float32Array(NP), pVY = new Float32Array(NP);
 var pL = new Float32Array(NP), pML = new Float32Array(NP), pT = new Uint8Array(NP), pA = new Uint8Array(NP);
 var pNext = 0;
 function spawn(t, x, y, vx, vy, life) {
   for (var k = 0; k < NP; k++) {
     var i = pNext + k; if (i >= NP) i -= NP;
-    if (!pA[i]) {
-      pA[i] = 1; pT[i] = t; pX[i] = x; pY[i] = y; pVX[i] = vx; pVY[i] = vy; pL[i] = life; pML[i] = life;
-      pNext = i + 1; if (pNext >= NP) pNext = 0; return;
-    }
+    if (!pA[i]) { pA[i] = 1; pT[i] = t; pX[i] = x; pY[i] = y; pVX[i] = vx; pVY[i] = vy; pL[i] = life; pML[i] = life; pNext = i + 1; if (pNext >= NP) pNext = 0; return; }
   }
 }
+var seed2 = 0x1234567 | 0;      // view-dependent randomness (snow, motes) kept apart from the story RNG
+function rnd2() { seed2 ^= seed2 << 13; seed2 ^= seed2 >>> 17; seed2 ^= seed2 << 5; return (seed2 >>> 0) / 4294967296; }
 function dustBurst(n, power) {
-  for (var k = 0; k < n; k++) {
-    var side = rnd() < 0.5 ? -1 : 1;
-    spawn(0, GXD + side * (1 + rnd() * 5), SURF - 1 - rnd() * 1.5, side * (10 + rnd() * 18) * power, -(1 + rnd() * 5), 0.6 + rnd() * 0.7);
-  }
+  for (var k = 0; k < n; k++) { var side = rnd() < 0.5 ? -1 : 1; spawn(0, GXD + side * (2 + rnd() * 10), SURF - 1 - rnd() * 3, side * (25 + rnd() * 45) * power, -(2 + rnd() * 12), 0.6 + rnd() * 0.8); }
 }
 
 /* =====================================================================
    SCRIPT
    ===================================================================== */
-var SEG = new Float64Array([
-  1.6, 0.45, 3.0, 4.6, 2.4, 0.6, 1.0, 2.0, 0.6, 0.6, 2.4, 4.6, 2.6, 0.6, 1.0, 1.8, 2.0, 2.25, 2.4, 5.0,
-  2.6, 3.0, 1.25, 6.0, 4.5, 2.6, 2.2, 2.6, 0.6, 0.45, 3.0, 4.6, 2.4, 0.6, 1.6, 0.8, 0.6, 0.45, 2.4, 4.6,
-  2.8, 1.2, 2.0
-]);
-var NSEG = SEG.length, SEGSTART = new Float64Array(NSEG + 1);
-for (var si = 0; si < NSEG; si++) SEGSTART[si + 1] = SEGSTART[si] + SEG[si];
+var SEGS = [
+  ['TAKEBAT',1.8],['KNEEL0',0.7],['OPENCASE',0.9],['INSERT',1.5],['PROPS',1.3],['LIFT',0.8],['RISE0',0.6],['TURN0',0.45],
+  ['WALK1',1.0],['CLIMB1',5.0],['WALK2',3.3],['KNEEL1',0.6],['PLACE',1.0],['UNFOLD',2.0],['RISE1',0.6],['TURN1',0.6],
+  ['WALK3',3.3],['DESC1',5.0],['WALK4',1.9],['SIT',0.6],['TAKECTRL',1.0],['PREFLIGHT',1.8],['PAN',2.0],['MOTOR',2.25],
+  ['TAKEOFF',2.4],['FLY',5.0],['PANBACK',2.6],['OPERATE',3.0],['LAPTOP',1.25],['FPV',6.0],['RETURN',4.5],['LAND',2.6],
+  ['SPIN',2.2],['PANIN',2.6],['STAND',0.6],['TURN2',0.45],['WALK5',1.9],['CLIMB2',5.0],['WALK6',3.3],['KNEEL2',0.6],
+  ['FOLD',1.6],['PICK',0.8],['RISE2',0.6],['TURN3',0.45],['WALK7',3.3],['DESC2',5.0],['WALK8',1.0],['KNEEL3',0.7],
+  ['STOW',2.0],['RISE3',0.6],['PUTBAT',1.4],['IDLE',2.2]
+];
+var NSEG = SEGS.length, SEG = new Float64Array(NSEG), SEGSTART = new Float64Array(NSEG + 1), K = {};
+for (var si = 0; si < NSEG; si++) { SEG[si] = SEGS[si][1]; K[SEGS[si][0]] = si; SEGSTART[si + 1] = SEGSTART[si] + SEG[si]; }
 var LOOPLEN = SEGSTART[NSEG];
-var S_X  = [46,46,46,90,152,188,188,188,188,188,188,152,90,52,52,52,52,52,52,52,52,52,52,52,52,52,52,52,52,52,52,90,152,188,188,188,188,188,188,152,90,46,46];
-var S_F  = [-1,-1,1,1,1,1,1,1,1,1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,1,1,1,1,1,1,1,1,-1,-1,-1,-1,-1];
+function S(name) { return SEGSTART[K[name]]; }
+// distant artillery: [loop time, x in tree-layer coords, sound delay, birds]
+var ART = [[7.5, 160, 4.6, 0], [24.5, 520, 6.4, 1], [41.5, 330, 3.8, 0], [61.0, 230, 5.4, 0], [77.0, 600, 6.8, 1], [94.0, 420, 4.4, 0]];
 
-var STEP = 1 / 60;
-var seg = 0, st = 0, T = 0, frame = 0;
-
-var chX = 46, chY = FLOOR - 1, chFace = -1, chMode = 0, chArm = 0, walkPh = 0, chLean = 0, stairBody = 0;
-var headS = -1, glowS = 0, ctrlS = 0, act = 0, handDrone = 0;
-var dState = 0, dX = GXD, dY = GYD, dS = 1, dTilt = 0, dVis = 1, dAlt = 0, vibX = 0, vibY = 0, shake = 0;
+var STEP = 1 / 60, seg = 0, st = 0, T = 0, frame = 0;
+var chX = 228, chY = FLOOR, chFace = -1, chMode = 0, chArm = 0, handItem = 0, itemAt = 0, reachX = 0, reachY = 0, reachB = 0;
+var walkPh = 0, stairBody = 0, headS = 0, headT = 0, glowS = 0, ctrlS = 0, act = 0;
+var dState = 0, dBat = 0, caseOpen = 0, propFlick = -9, batOnCharger = 1, ctrlOnTable = 1;
+var dX = GXD, dY = GYD, dS = 1, dTilt = 0, dVis = 1, dAlt = 0, vibX = 0, vibY = 0, shake = 0;
 var propSpd = 0, propPh = 0, lights = 0, navOn = 0, strobe = 0, dLevel = 0, lrX = 0, lrY = 0, lgX = 0, lgY = 0;
-var camXf = 0, camYf = 42, camX = 0, camY = 42, zoom = 1, zfx = 0, zfy = 0, fpv = 0, fpvT = 0;
-var poseTick = 0, pBreath = 0, pWeight = 0, pHead = -1, pGlow = 0, pCtrl = 0, pThL = 0, pThR = 0, pWalk = 0, pHand = 0, pLean = 0;
-var packX = 0, packY = 0, pAnt = 0, lastB = 0, lastWalk = 0, lastMode = 0, lastDState = 0, snapCam = 1;
-var TRN = 8, trX = new Int16Array(TRN), trY = new Int16Array(TRN), trL = new Uint8Array(TRN), trI = 0;
+var camXf = 0, camYf = 122, camX = 0, camY = 122, camMode = 0, zoom = 1, zfx = 0, zfy = 0, fpv = 0, fpvT = 0, snapCam = 1;
+var curO = 0, redLight = 0, partMode = 0, catUp = 0, poseTick = 0, poseDirty = 1, pBreath = 0, pThumb = 0;
+var lastDState = 0, lastMode = 0, lastWalk = 0, splashed = 0, breathT = 0, lastStepX = 0;
+var opBuf = null, ptBuf = null;
 
-function segStart(s) {
-  chX = S_X[s]; chFace = S_F[s]; chY = bodyY(Math.round(chX));
-  if (s === 7 || s === 15 || s === 22 || s === 23 || s === 24) snapCam = 1;
-}
 function walkTo(x0, x1, u) {
   var nx = x0 + (x1 - x0) * u;
-  walkPh += Math.abs(nx - chX);
-  chX = nx; chY = bodyY(Math.round(chX)); chMode = 1;
-  chFace = x1 > x0 ? 1 : -1;
-  stairBody = onStairs(Math.round(chX)) ? (x1 > x0 ? 1 : -1) : 0;
+  stairBody = (nx > STAIR_X0 - 6 && nx < STAIR_END + 6) ? 1 : 0;
+  walkPh += Math.abs(nx - chX) / (stairBody ? 22 : 40); chX = nx; chMode = 1; chFace = x1 > x0 ? 1 : -1;
+  chY = stairBody ? Math.round((groundAt(chX - 6) + groundAt(chX + 6)) / 2) : groundAt(chX);
 }
+function place(x, face) { chX = x; chFace = face; chY = groundAt(x); stairBody = 0; }
+function turnFrames(u, from, to) { chMode = u < 0.33 ? 0 : u < 0.67 ? 5 : 0; chFace = u < 0.5 ? from : to; }
+function kneelDown(u) { chMode = u < 0.5 ? 4 : 2; }
+function riseUp(u) { chMode = u < 0.4 ? 2 : u < 0.8 ? 4 : 0; }
+function reach(x, y) { chArm = 3; reachX = x; reachY = y; reachB = 0; }
+function reach2(x, y) { chArm = 3; reachX = x; reachY = y; reachB = 1; }
+function crossed(u, a) { return u >= a && u - STEP / SEG[seg] < a; }
 function loopTime() { return SEGSTART[seg] + st; }
 
 function update() {
   T += STEP; st += STEP; frame++;
-  if (st >= SEG[seg] - 1e-9) { st -= SEG[seg]; seg = (seg + 1) % NSEG; segStart(seg); }
-  var u = st / SEG[seg], e;
-  var headT = 0, glowT = 0, ctrlT = 0, propT = 0, camMode = 0;
+  if (st >= SEG[seg] - 1e-9) { st -= SEG[seg]; seg = (seg + 1) % NSEG; if (seg === K.INSERT || seg === K.UNFOLD || seg === K.PREFLIGHT || seg === K.LAPTOP || seg === K.FPV || seg === K.RETURN) snapCam = 1; }
+  var u = st / SEG[seg], e, lt = loopTime();
+  var glowT = 0, ctrlT = 0, propT = 0;
   act = 0; lights = 0; dVis = 1; dTilt = 0; dS = 1; dAlt = 0; vibX = 0; vibY = 0; shake = 0;
-  chMode = 0; pHand = 0; zoom = 1; fpv = 0; chLean = 0; stairBody = 0; handDrone = 0;
-  var glance = Math.sin(T * 0.9) > 0.15 ? 0 : -1;
-
+  chMode = 0; zoom = 1; fpv = 0; stairBody = 0; camMode = 0; itemAt = 0; headT = 0;
+  if (chArm === 3) chArm = handItem ? 1 : 0;
+  var glance = Math.sin(T * 0.9) > 0.15 ? 0 : 0.45;
   switch (seg) {
-    case 0: chFace = -1; headT = -1; chArm = u < 0.25 ? 0 : u < 0.6 ? 4 : 1;
-      if (u >= 0.45 && dState === 0) { dState = 1; sfxRustle(); }
-      handDrone = (chArm === 4 && dState === 1) ? 1 : 0; break;
-    case 1: case 29: case 37:
-      chArm = seg === 29 ? 0 : 1; chMode = u < 0.33 ? 0 : u < 0.67 ? 5 : 0;
-      chFace = seg === 37 ? (u < 0.67 ? 1 : -1) : (u < 0.67 ? -1 : 1); break;
-    case 2: walkTo(46, 90, u); chArm = 1; break;
-    case 3: walkTo(90, 152, u); chArm = 1; break;
-    case 4: walkTo(152, 188, u); chArm = 1; break;
-    case 5: chMode = u < 0.5 ? 4 : 2; chArm = 1; headT = -1; break;
-    case 6: chMode = 2; chArm = 3; headT = -1; handDrone = u <= 0.5 ? 1 : 0;
-      if (u > 0.5 && dState === 1) { dState = 2; sfxThud(0.3); } break;
-    case 7: chMode = 2; chArm = 3; headT = -1; pHand = (frame >> 3) & 1;
-      dState = u < 0.3 ? 2 : u < 0.65 ? 3 : 4; zoom = 2; zfx = GXD - 4 + Math.round(u * 3); zfy = GYD - 2; break;
-    case 8: case 36: chMode = u < 0.4 ? 2 : u < 0.8 ? 4 : 0; chArm = seg === 36 ? 1 : 0; headT = -1; break;
-    case 9: chMode = u < 0.33 ? 0 : u < 0.67 ? 5 : 0; chFace = u < 0.67 ? 1 : -1; chArm = 0; headT = 0; break;
-    case 10: walkTo(188, 152, u); chArm = 0; break;
-    case 11: walkTo(152, 90, u); chArm = 0; headT = -1; break;
-    case 12: walkTo(90, 52, u); chArm = 0; break;
-    case 13: chMode = u < 0.5 ? 4 : 3; chArm = 0; chFace = -1; break;
-    case 14: chMode = 3; chArm = u < 0.55 ? 4 : 2; headT = -1; glowT = u < 0.55 ? 0 : 1; break;
-    case 15: chMode = 3; chArm = 2; headT = -1; glowT = 2; ctrlT = -1; act = 1; lights = u > 0.5 ? 1 : 0;
-      if (u > 0.2) { zoom = 2; zfx = Math.round(chX) - 9 - Math.round(u * 3); zfy = Math.round(chY) - 18; } break;
-    case 16: chMode = 3; chArm = 2; headT = glance; glowT = 2; act = 1; lights = 1; camMode = 1;
-      propT = u > 0.5 ? 0.16 : 0; dState = 5; break;
-    case 17: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
-      if (propSpd > 0.15) { vibY = ((frame * 5) % 7 < 2) ? -1 : 0; vibX = ((frame * 3) % 11 === 0) ? 1 : 0; } break;
-    case 18: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
-      if (st < 0.25) vibY = ((frame * 5) % 7 < 2) ? -1 : 0;
-      else dAlt = 24 * ease((st - 0.25) / 2.0);
-      if (st > 0.25 && st < 0.6) shake = (frame >> 1) & 1;
-      if (st >= 0.25 && st - STEP < 0.25) { dustBurst(10, 1); sfxLift(); }
-      break;
-    case 19: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
-      if (st < 0.9) dAlt = 24 + (Math.sin(st * 5) > 0.55 ? 1 : 0);
-      else if (st < 1.4) { dAlt = 24; dTilt = 1; }
-      else {
-        var uf = (st - 1.4) / 3.6; e = ease(uf);
-        dAlt = 24 + 33 * e; dX = GXD + 2 + 70 * e; dS = 1 - 0.92 * Math.pow(e, 0.6); dTilt = e < 0.9 ? 1 : 0;
-        if (uf >= 1) dVis = 0;
-      }
-      break;
-    case 20: case 21: case 22:
-      chMode = 3; chArm = 2; glowT = 2; act = 1; dState = 5; propT = 1; lights = 1; dVis = 0;
-      headT = seg === 20 ? -1 : glance; chLean = headT === 0 ? 1 : 0; camMode = seg === 20 ? 2 : 0;
-      if (seg === 22) { zoom = 2; zfx = 36 + Math.round(u * 2); zfy = 104; headT = 0; chLean = 1; }
-      break;
-    case 23: chMode = 3; chArm = 2; glowT = 2; act = 1; dState = 5; propT = 1; lights = 1; dVis = 0; fpv = 1; fpvT = st; headT = 0; chLean = 1;
-      if (st < STEP * 1.5) sfxStatic(0.2);
-      if (SEG[23] - st < STEP * 1.5) sfxStatic(0.16);
-      break;
-    case 24: chMode = 3; chArm = 2; glowT = 2; act = 1; dState = 5; propT = 1; lights = 1; camMode = 1; headT = glance;
-      e = 1 - (1 - u) * (1 - u) * (1 - u);
-      dX = 290 + (GXD - 290) * e - 14 * Math.sin(e * Math.PI); dAlt = GYD - (6 + (GYD - 20 - 6) * e);
-      dS = 0.08 + 0.92 * Math.pow(e, 2.2); dTilt = e < 0.8 ? -1 : 0; break;
-    case 25: chMode = 3; chArm = 2; glowT = 2; act = 1; dState = 5; propT = 1; lights = 1; camMode = 1; headT = glance;
-      dAlt = st < 0.5 ? 20 : 20 * (1 - ease((st - 0.5) / 2.0));
-      if (st >= 2.5 && st - STEP < 2.5) { dustBurst(6, 0.6); sfxThud(0.45); }
-      if (u > 0.55) { zoom = 2; zfx = GXD; zfy = GYD - 8; }
-      break;
-    case 26: chMode = 3; chArm = 2; glowT = 1; act = 0.6; dState = 5; propT = 0; lights = u < 0.8 ? 1 : 0; camMode = 1; headT = -1;
-      if (u >= 0.8 && u - STEP / SEG[26] < 0.8) sfxBeep(1400, 0.05); break;
-    case 27: chMode = 3; chArm = u < 0.6 ? 2 : 4; glowT = u < 0.6 ? 1 : 0; headT = -1; camMode = 2;
-      if (dState === 5) dState = 4; break;
-    case 28: chMode = u < 0.4 ? 3 : u < 0.8 ? 4 : 0; chArm = 0; chFace = -1; break;
-    case 30: walkTo(52, 90, u); chArm = 0; break;
-    case 31: walkTo(90, 152, u); chArm = 0; break;
-    case 32: walkTo(152, 188, u); chArm = 0; break;
-    case 33: chMode = u < 0.5 ? 4 : 2; chArm = 0; headT = -1; break;
-    case 34: chMode = 2; chArm = 3; headT = -1; pHand = (frame >> 3) & 1;
+    case K.TAKEBAT: place(228, -1); headT = -0.15;
+      if (u > 0.2 && u < 0.75) reach(212, 294); else chArm = handItem ? 1 : 0;
+      if (u >= 0.5 && batOnCharger) { batOnCharger = 0; handItem = 1; itemAt = 1; sfxClick(2400); }
+      if (handItem && chArm === 3) itemAt = 1; break;
+    case K.KNEEL0: place(228, -1); kneelDown(u); chArm = 1; headT = 0.45; break;
+    case K.OPENCASE: place(228, -1); chMode = 2; headT = 0.5; reach(218, 338); itemAt = 2;
+      if (crossed(u, 0.2) || crossed(u, 0.32)) sfxClick(1800);
+      caseOpen = clamp((u - 0.45) / 0.35, 0, 1); if (crossed(u, 0.5)) sfxThud(0.12); break;
+    case K.INSERT: place(228, -1); chMode = 2; headT = 0.55; zoom = 2; zfx = 214; zfy = 330;
+      if (u < 0.6) { reach(213, 341); itemAt = 1; } else reach(216, 336);
+      if (crossed(u, 0.6)) { dBat = 1; handItem = 0; sfxClick(2600); sfxPower(); } zfy = 318; zfx = 200; break;
+    case K.PROPS: place(228, -1); chMode = 2; headT = 0.6; zoom = 2; zfx = 212; zfy = 331;
+      reach(205 + (u > 0.3 && u < 0.5 ? 4 : 0), 339); zfy = 318; zfx = 202;
+      if (crossed(u, 0.3)) { propFlick = T; sfxFlick(); } break;
+    case K.LIFT: place(228, -1); chMode = 2; headT = 0.45; reach2(213, 340 - (u > 0.4 ? (u - 0.4) * 30 : 0));
+      if (u >= 0.4 && dState === 0) { dState = 1; handItem = 2; sfxRustle(); } break;
+    case K.RISE0: place(228, -1); riseUp(u); chArm = 1; break;
+    case K.TURN0: place(228, -1); turnFrames(u, -1, 1); chArm = 1; break;
+    case K.WALK1: walkTo(228, 262, u); chArm = 1; break;
+    case K.CLIMB1: walkTo(262, 412, u); chArm = 1; break;
+    case K.WALK2: walkTo(412, 532, u); chArm = 1; break;
+    case K.KNEEL1: place(532, 1); kneelDown(u); chArm = 1; headT = 0.4; break;
+    case K.PLACE: place(532, 1); chMode = 2; headT = 0.5; reach2(GXD, GYD - 2 + (u < 0.5 ? (0.5 - u) * 10 : 0));
+      if (u > 0.5 && dState === 1) { dState = 2; handItem = 0; sfxThud(0.3); } break;
+    case K.UNFOLD: place(532, 1); chMode = 2; headT = 0.55; reach2(GXD - 3 + ((frame >> 3) & 1), GYD - 1);
+      dState = u < 0.3 ? 2 : u < 0.65 ? 3 : 4; zoom = 2; zfx = GXD - 10 + Math.round(u * 4); zfy = GYD - 14; break;
+    case K.RISE1: place(532, 1); riseUp(u); headT = 0.3; break;
+    case K.TURN1: place(532, 1); turnFrames(u, 1, -1); break;
+    case K.WALK3: walkTo(532, 412, u); break;
+    case K.DESC1: walkTo(412, 262, u); headT = 0.35; break;
+    case K.WALK4: walkTo(262, 189, u); break;
+    case K.SIT: place(189, -1); kneelDown(u); if (u >= 0.5) chMode = 3; break;
+    case K.TAKECTRL: place(189, -1); chMode = 3; headT = 0.3;
+      if (u < 0.55) { reach(158, 318); itemAt = 1; } else chArm = 2;
+      if (u >= 0.45 && ctrlOnTable) { ctrlOnTable = 0; handItem = 3; }
+      glowT = u < 0.55 ? 0 : 1; break;
+    case K.PREFLIGHT: place(189, -1); chMode = 3; chArm = 2; headT = 0.45; glowT = 2; ctrlT = -1; act = 1; lights = u > 0.5 ? 1 : 0;
+      if (crossed(u, 0.5)) sfxBeep(1760, 0.06);
+      if (u > 0.2) { zoom = 2; zfx = 175; zfy = 300; } break;
+    case K.PAN: case K.MOTOR: case K.TAKEOFF: case K.FLY: case K.PANBACK: case K.OPERATE: case K.LAPTOP: case K.FPV: case K.RETURN: case K.LAND: case K.SPIN:
+      place(189, -1); chMode = 3; chArm = 2; glowT = 2; act = 1; dState = 5; lights = 1; propT = 1; headT = glance; break;
+    case K.PANIN: place(189, -1); chMode = 3; headT = 0.4;
+      if (u < 0.6) chArm = 2; else { reach(158, 318); itemAt = 1; }
+      if (u >= 0.8 && handItem === 3) { handItem = 0; ctrlOnTable = 1; sfxThud(0.1); }
+      glowT = u < 0.6 ? 1 : 0; if (dState === 5) dState = 4; break;
+    case K.STAND: place(189, -1); chMode = u < 0.4 ? 3 : u < 0.8 ? 4 : 0; break;
+    case K.TURN2: place(189, -1); turnFrames(u, -1, 1); break;
+    case K.WALK5: walkTo(189, 262, u); break;
+    case K.CLIMB2: walkTo(262, 412, u); break;
+    case K.WALK6: walkTo(412, 532, u); break;
+    case K.KNEEL2: place(532, 1); kneelDown(u); headT = 0.4; break;
+    case K.FOLD: place(532, 1); chMode = 2; headT = 0.55; reach2(GXD - 2 + ((frame >> 3) & 1), GYD - 1);
       dState = u < 0.35 ? 4 : u < 0.7 ? 3 : 2; break;
-    case 35: chMode = 2; chArm = 3; headT = -1;
-      if (u >= 0.4 && dState === 2) { dState = 1; sfxRustle(); }
-      handDrone = dState === 1 ? 1 : 0; break;
-    case 38: walkTo(188, 152, u); chArm = 1; break;
-    case 39: walkTo(152, 90, u); chArm = 1; headT = -1; break;
-    case 40: walkTo(90, 46, u); chArm = 1; break;
-    case 41: chFace = -1; headT = -1; chArm = u < 0.6 ? 4 : 0;
-      handDrone = (chArm === 4 && dState === 1) ? 1 : 0;
-      if (u >= 0.5 && dState === 1) { dState = 0; sfxThud(0.25); handDrone = 0; } break;
-    case 42: chFace = -1; chArm = 0; headT = (u > 0.35 && u < 0.7) ? 0 : -1; break;
+    case K.PICK: place(532, 1); chMode = 2; headT = 0.45; reach2(GXD, GYD - 2 - (u > 0.4 ? (u - 0.4) * 20 : 0));
+      if (u >= 0.4 && dState === 2) { dState = 1; handItem = 2; sfxRustle(); } break;
+    case K.RISE2: place(532, 1); riseUp(u); chArm = 1; break;
+    case K.TURN3: place(532, 1); turnFrames(u, 1, -1); chArm = 1; break;
+    case K.WALK7: walkTo(532, 412, u); chArm = 1; break;
+    case K.DESC2: walkTo(412, 262, u); chArm = 1; headT = 0.35; break;
+    case K.WALK8: walkTo(262, 228, u); chArm = 1; break;
+    case K.KNEEL3: place(228, -1); kneelDown(u); chArm = 1; headT = 0.45; break;
+    case K.STOW: place(228, -1); chMode = 2; headT = 0.55;
+      if (u < 0.3) reach2(213, 336 + u * 15);
+      else if (u < 0.7) { reach(213, 341); if (u >= 0.6) itemAt = 1; }
+      else reach(214, 326 + (u - 0.7) * 40);
+      if (u >= 0.3 && dState === 1) { dState = 0; handItem = 0; sfxThud(0.12); }
+      if (u >= 0.6 && dBat) { dBat = 0; handItem = 1; sfxClick(2200); }
+      if (u > 0.75) caseOpen = clamp(1 - (u - 0.75) / 0.15, 0, 1);
+      if (crossed(u, 0.9)) sfxThud(0.18); break;
+    case K.RISE3: place(228, -1); riseUp(u); chArm = 1; caseOpen = 0; break;
+    case K.PUTBAT: place(228, -1); headT = -0.15;
+      if (u > 0.2 && u < 0.7) { reach(212, 294); if (handItem) itemAt = 1; } else chArm = handItem ? 1 : 0;
+      if (u >= 0.5 && !batOnCharger) { batOnCharger = 1; handItem = 0; sfxClick(2400); } break;
+    case K.IDLE: place(228, -1); headT = u < 0.6 ? 0.05 : -0.1; break;
   }
-  if (dState === 5 && seg !== 19 && seg !== 24) dX = GXD;
-  if (dState === 5 && seg === 19 && st >= 0.9 && st < 1.4) dX = GXD + Math.round((st - 0.9) * 4);
+  // drone flight states
+  if (seg === K.PAN) { camMode = 1; propT = u > 0.5 ? 0.16 : 0; }
+  else if (seg === K.MOTOR) { camMode = 1; if (propSpd > 0.15) { vibY = ((frame * 5) % 7 < 2) ? -1 : 0; vibX = ((frame * 3) % 11 === 0) ? 1 : 0; } }
+  else if (seg === K.TAKEOFF) { camMode = 1;
+    if (st < 0.25) vibY = ((frame * 5) % 7 < 2) ? -1 : 0; else dAlt = 60 * ease((st - 0.25) / 2.0);
+    if (st > 0.25 && st < 0.6) shake = (frame >> 1) & 1;
+    if (st >= 0.25 && st - STEP < 0.25) { dustBurst(18, 1); sfxLift(); } }
+  else if (seg === K.FLY) { camMode = 1;
+    if (st < 0.9) dAlt = 60 + (Math.sin(st * 5) > 0.55 ? 1 : 0);
+    else if (st < 1.4) { dAlt = 60; dTilt = 1; }
+    else { var uf = (st - 1.4) / 3.6; e = ease(uf); dAlt = 60 + 82 * e; dX = GXD + 4 + 220 * e; dS = 1 - 0.93 * Math.pow(e, 0.6); dTilt = e < 0.9 ? 1 : 0; if (uf >= 1) dVis = 0; } }
+  else if (seg === K.PANBACK || seg === K.OPERATE || seg === K.LAPTOP) { dVis = 0; camMode = seg === K.PANBACK ? 2 : 0;
+    if (seg === K.LAPTOP) { zoom = 2; zfx = 150; zfy = 308; headT = 0.1; } }
+  else if (seg === K.FPV) { dVis = 0; fpv = 1; fpvT = st; headT = 0.1;
+    if (st < STEP * 1.5) sfxStatic(0.2); if (SEG[seg] - st < STEP * 1.5) sfxStatic(0.16); }
+  else if (seg === K.RETURN) { camMode = 1; e = 1 - (1 - u) * (1 - u) * (1 - u);
+    dX = 790 + (GXD - 790) * e - 30 * Math.sin(e * Math.PI); dAlt = GYD - (20 + (GYD - 50 - 20) * e);
+    dS = 0.08 + 0.92 * Math.pow(e, 2.2); dTilt = e < 0.8 ? -1 : 0; }
+  else if (seg === K.LAND) { camMode = 1; dAlt = st < 0.5 ? 50 : 50 * (1 - ease((st - 0.5) / 2.0));
+    if (st >= 2.5 && st - STEP < 2.5) { dustBurst(10, 0.6); sfxThud(0.45); }
+    if (u > 0.55) { zoom = 2; zfx = GXD; zfy = GYD - 14; } }
+  else if (seg === K.SPIN) { camMode = 1; propT = 0; lights = u < 0.8 ? 1 : 0; glowT = 1; headT = 0.45; if (crossed(u, 0.8)) sfxBeep(1400, 0.05); }
+  if (seg === K.PANIN || seg === K.PANBACK) camMode = 2;
+  if (dState === 5 && seg !== K.FLY && seg !== K.RETURN) dX = GXD;
+  if (dState === 5 && seg === K.FLY && st >= 0.9 && st < 1.4) dX = GXD + Math.round((st - 0.9) * 10);
   dY = GYD - dAlt;
+  if (seg >= K.PAN && seg <= K.SPIN && (seg !== K.PAN || u > 0.5) && seg !== K.SPIN) propT = seg === K.PAN ? 0.16 : 1;
 
+  // events: drone unfold clicks, rustle on pose change, curtain
   if (dState !== lastDState) {
     if ((dState === 3 || dState === 4) && lastDState >= 2 && lastDState <= 4) sfxClick(3200);
     if (dState === 2 && lastDState === 3) sfxClick(2600);
     lastDState = dState;
   }
   if (chMode !== lastMode) { if (chMode === 2 || chMode === 3 || chMode === 4) sfxRustle(); lastMode = chMode; }
-  if (seg === 15 && u > 0.5 && u - STEP / SEG[15] <= 0.5) { sfxBeep(1760, 0.06); }
-  if (seg === 16 && u > 0.5 && u - STEP / SEG[16] <= 0.5) { sfxBeep(2349, 0.05); }
+  var co = (chMode === 1 && Math.abs(chX - DOORX) < 16) ? 1 - Math.abs(chX - DOORX) / 16 : 0;
+  if (co > 0.3 && curO <= 0.3) sfxRustle();
+  curO += (co - curO) * Math.min(1, STEP * 10);
+  redLight = (chX > 250 && chX < STAIR_END + 4 && chMode === 1) ? 1 : 0;
+  if (chMode === 1 && Math.abs(chX - 238) < 7 && !splashed) { splashed = 1; for (var sp = 0; sp < 6; sp++) spawn(8, chX + (rnd() - 0.5) * 6, FLOOR - 1, (rnd() - 0.5) * 40, -20 - rnd() * 25, 0.35); sfxSplash(); }
+  if (Math.abs(chX - 238) > 12) splashed = 0;
 
+  // smoothing
   var pr = propT > propSpd ? 0.9 : 1.7;
   propSpd += (propT - propSpd) * pr * STEP; if (propT === 0 && propSpd < 0.02) propSpd = 0;
   propPh += propSpd * STEP * 30;
-  headS += (headT - headS) * 4.5 * STEP;
-  glowS += (glowT - glowS) * 3.0 * STEP;
-  ctrlS += (ctrlT - ctrlS) * 4.0 * STEP;
+  headS += (headT - headS) * 5 * STEP; glowS += (glowT - glowS) * 3 * STEP; ctrlS += (ctrlT - ctrlS) * 4 * STEP;
 
-  // camera: follow with lead + slow handheld drift; close-ups are cuts
-  var tx, ty, rate, lt = loopTime();
-  if (zoom === 2) { tx = clamp(zfx - W / 2, 0, WW - W); ty = clamp(zfy - H / 2, 0, WH - H); rate = 0; }
-  else if (camMode === 1) { tx = clamp(dX - W / 2 + 10, 0, WW - W); ty = 0; rate = 1.7; }
+  // camera (follow with lead + slow handheld drift; close-ups are hard cuts)
+  var tx, ty, rate;
+  if (zoom === 2) { tx = zfx - W / 2; ty = VERT ? -70 : zfy - H / 2; rate = 0; }
+  else if (camMode === 1) { tx = dX - W / 2 + (VERT ? 0 : 30); ty = VERT ? -70 : 25; rate = 1.7; }
   else {
-    tx = clamp(chX - W / 2 + chFace * 12, 0, WW - W);
-    ty = clamp((chY - (SURF - 1)) * (WH - H) / 60, 0, WH - H);
+    tx = chX - W / 2 + chFace * (VERT ? 14 : 36);
+    ty = VERT ? -70 : 25 + (chY - SURF) * 97 / 150;
     rate = camMode === 2 ? 1.5 : 3.0;
   }
-  if (rate > 0) { tx = clamp(tx + 3 * Math.sin(lt * 0.21 + 0.4), 0, WW - W); ty = clamp(ty + 1.4 * Math.sin(lt * 0.29), 0, WH - H); }
+  if (rate > 0) { tx += 4 * Math.sin(lt * 0.21 + 0.4); if (!VERT) ty += 2 * Math.sin(lt * 0.29); }
+  tx = clamp(tx, 0, WW - W); ty = VERT ? -70 : clamp(ty, 0, WH - H);
   if (snapCam || rate === 0) { camXf = tx; camYf = ty; snapCam = 0; }
   else { camXf += (tx - camXf) * rate * STEP; camYf += (ty - camYf) * rate * STEP; }
   camX = Math.round(camXf); camY = Math.round(camYf);
 
   var bc = T * 1.2; bc -= Math.floor(bc);
-  navOn = lights ? (seg === 17 ? ((frame >> 4) & 1) : (bc < 0.75 ? 1 : 0)) : 0;
+  navOn = lights ? (seg === K.MOTOR ? ((frame >> 4) & 1) : (bc < 0.75 ? 1 : 0)) : 0;
   if (dS < 0.13 && lights) navOn = bc < 0.35 ? 1 : 0;
   var sc = T / 1.3; sc = (sc - Math.floor(sc)) * 1.3;
   strobe = lights && (sc < 0.06 || (sc > 0.16 && sc < 0.22)) ? 1 : 0;
   dLevel = dS > 0.72 ? 0 : dS > 0.45 ? 1 : dS > 0.22 ? 2 : 3;
-
-  // drone trail ring (pixel motion smear for fast flight)
   trI = (trI + 1) % TRN; trX[trI] = Math.round(dX); trY[trI] = Math.round(dY); trL[trI] = (dState === 5 && dVis) ? dLevel + 1 : 0;
 
+  // partner + cat behaviour on the loop clock
+  var pb = S('PANBACK');
+  partMode = 0;
+  if (lt > pb + 2.0 && lt < S('OPERATE') + 2.6) partMode = 1;
+  else if (lt > S('LAPTOP') - 0.4 && lt < S('RETURN')) partMode = 2;
+  if (Math.abs(lt - (pb + 1.0)) < STEP / 2 || Math.abs(lt - (pb + 1.7)) < STEP / 2) sfxBuzz();
+  if (Math.abs(lt - (pb + 2.0)) < STEP / 2 || Math.abs(lt - (S('OPERATE') + 2.6)) < STEP / 2) sfxThud(0.08);
+  catUp = (lt > S('SIT') && lt < S('SIT') + 2.5) || (lt > S('PANIN') && lt < S('PANIN') + 2) ? 1 : 0;
+
+  // particles
   if (dState === 5 && dVis && propSpd > 0.3) {
     var k = 0;
-    if (seg === 17) k = 0.12 * propSpd;
-    else if (dAlt < 16 && (seg === 18 || seg === 19 || seg === 25)) k = (1 - dAlt / 16) * propSpd * 0.5;
-    else if (seg === 26) k = 0.05 * propSpd;
+    if (seg === K.MOTOR) k = 0.2 * propSpd;
+    else if (dAlt < 40 && (seg === K.TAKEOFF || seg === K.FLY || seg === K.LAND)) k = (1 - dAlt / 40) * propSpd * 0.8;
+    else if (seg === K.SPIN) k = 0.08 * propSpd;
     if (k > 0 && rnd() < k) {
-      var side = rnd() < 0.5 ? -1 : 1;
-      var spd = (seg === 17 || seg === 26 ? 6 : 14 + 22 * (1 - dAlt / 16)) * (0.6 + rnd() * 0.6);
-      spawn(0, dX + side * (1 + rnd() * 5), SURF - 1 - rnd() * 1.5, side * spd, -(1 + rnd() * 5), 0.5 + rnd() * 0.8);
+      var side = rnd() < 0.5 ? -1 : 1, spd = (seg === K.MOTOR || seg === K.SPIN ? 14 : 35 + 55 * (1 - dAlt / 40)) * (0.6 + rnd() * 0.6);
+      spawn(0, dX + side * (2 + rnd() * 12), SURF - 1 - rnd() * 3, side * spd, -(2 + rnd() * 12), 0.5 + rnd() * 0.8);
     }
   }
-  if ((seg === 5 || seg === 33) && st < STEP * 1.5) for (var kk = 0; kk < 4; kk++) spawn(0, chX - 4 + rnd() * 8, SURF - 1, (rnd() - 0.5) * 10, -rnd() * 3, 0.5 + rnd() * 0.4);
-  if (rnd() < 0.02) spawn(6, ROOM_X0 + 4 + rnd() * 64, ROOM_Y0 + 1, 0, 6 + rnd() * 6, 2.5);
-  if (rnd() < 0.016) spawn(2, camX + rnd() * (W - 8), 20 + rnd() * 40, 1.5 + rnd() * 2, -0.4 + rnd() * 0.8, 3 + rnd() * 3);
-  if (dVis && dState === 5 && navOn && dLevel === 0 && dAlt > 1 && rnd() < 0.03) {
+  if ((seg === K.KNEEL1 || seg === K.KNEEL2) && st < STEP * 1.5) for (var kk = 0; kk < 6; kk++) spawn(0, chX - 8 + rnd() * 16, SURF - 1, (rnd() - 0.5) * 25, -rnd() * 8, 0.5 + rnd() * 0.4);
+  if (rnd() < 0.02) spawn(6, ROOM_X0 + 10 + rnd() * 190, ROOM_Y0 + 1, 0, 10 + rnd() * 10, 3);
+  if (rnd() < 0.05) spawn(9, 57, 320, 2 + rnd() * 3, -8 - rnd() * 5, 1.4 + rnd() * 0.6);
+  for (var sn = 0; sn < 2; sn++) if (rnd2() < 0.55) spawn(7, camX - 20 + rnd2() * (W + 40), (VERT ? -70 : camY) - 4, -3 + rnd2() * 6, 9 + rnd2() * 8, 40);
+  if (rnd2() < 0.01) spawn(2, camX + rnd2() * W, 120 + rnd2() * 60, 3 + rnd2() * 4, -0.6 + rnd2() * 1.2, 3 + rnd2() * 3);
+  breathT += STEP;
+  if (breathT > 2.7) { breathT = 0; if (chY < 260 && !fpv) { var mx = chX + chFace * 12, my = chY - 70 + (chMode === 2 ? 15 : chMode === 3 ? 13 : 0); for (var bi = 0; bi < 6; bi++) spawn(10, mx + chFace * rnd() * 3, my + rnd() * 2, chFace * (5 + rnd() * 6), -3 - rnd() * 4, 0.9 + rnd() * 0.5); } }
+  if (dVis && dState === 5 && navOn && dLevel === 0 && dAlt > 2 && rnd() < 0.03) {
     if (rnd() < 0.5) spawn(3, lrX + (rnd() < 0.5 ? -1 : 1), lrY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
     else spawn(4, lgX + (rnd() < 0.5 ? -1 : 1), lgY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
   }
@@ -764,330 +1012,437 @@ function update() {
     if (!pA[i]) continue;
     pL[i] -= STEP; if (pL[i] <= 0) { pA[i] = 0; continue; }
     var t = pT[i];
-    if (t === 0) {
-      pVX[i] *= 0.95; pVY[i] = pVY[i] * 0.94 + 0.6 * STEP;
-      pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (pY[i] > SURF - 1) pY[i] = SURF - 1;
-    } else if (t === 2) { pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; }
-    else if (t === 6) {
-      pVY[i] += 40 * STEP; pY[i] += pVY[i] * STEP;
-      if (pY[i] >= FLOOR - 1) { pY[i] = FLOOR - 1; pVY[i] = 0; if (pL[i] > 0.4) pL[i] = 0.4; }
+    if (t === 0) { pVX[i] *= 0.95; pVY[i] = pVY[i] * 0.94 + 1.5 * STEP; pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (pY[i] > SURF - 1) pY[i] = SURF - 1; }
+    else if (t === 6) { pVY[i] += 90 * STEP; pY[i] += pVY[i] * STEP; if (pY[i] >= FLOOR - 1) { pY[i] = FLOOR - 1; pVY[i] = 0; if (pL[i] > 0.4) pL[i] = 0.4; } }
+    else if (t === 7) {
+      pX[i] += (pVX[i] + 6 * Math.sin(T * 0.8 + i)) * STEP; pY[i] += pVY[i] * STEP;
+      var gx = pX[i] | 0, gyy = gx >= STAIR_X0 && gx < STAIR_END ? treadY(gx) : surfTop(gx);
+      if (pY[i] >= gyy - 1) pL[i] = Math.min(pL[i], 0.6);
+      if (pY[i] > gyy) pA[i] = 0;
     }
+    else if (t === 8) { pVY[i] += 260 * STEP; pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (pY[i] > FLOOR - 1) pA[i] = 0; }
+    else { pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (t === 9 || t === 10) pVX[i] *= 0.98; }
   }
 
-  if (++poseTick >= 6) {
-    poseTick = 0;
-    var nb = Math.sin(T * 6.2832 / 3.6) > 0.3 ? -1 : 0;
-    packY = lastB; lastB = nb; pBreath = chMode === 1 ? 0 : nb;
-    pWeight = chMode === 0 && Math.sin(T * 6.2832 / 9) > 0.6 ? 1 : 0;
-    pWalk = ((walkPh / 1.9) | 0) % 6;
-    if (chMode === 1 && pWalk !== lastWalk && (pWalk === 0 || pWalk === 3)) sfxStep(chY > SURF + 2);
-    lastWalk = pWalk;
-    if (chMode === 1 && (pWalk === 1 || pWalk === 4)) packY = -1;
-    pHead = Math.round(headS); pGlow = Math.round(glowS); pCtrl = Math.round(ctrlS); pLean = chLean;
-    if (act > 0.5) { if (rnd() < act * 0.45) pThL ^= 1; if (rnd() < act * 0.45) pThR ^= 1; } else { pThL = 0; pThR = 0; }
-    var as = Math.sin(T * 1.9) + (chMode === 1 ? ((pWalk === 1 || pWalk === 4) ? 0.8 : -0.8) : 0);
-    pAnt = as > 0.55 ? 1 : (as < -0.55 ? -1 : 0);
-    packX = chMode === 1 ? -(pWalk >= 3 ? 1 : 0) : 0;
+  // pose snapshot at 15 fps (drawn-state rate separate from the 60 fps output)
+  if (++poseTick >= 4) {
+    poseTick = 0; poseDirty = 1;
+    pBreath = Math.sin(T * 6.2832 / 3.6) > 0.3 ? -1 : 0;
+    if (act > 0.5 && rnd() < 0.4) pThumb ^= 1;
+    if (chMode === 1) {
+      var ph = Math.floor(walkPh * 8) % 8;
+      if (ph !== lastWalk && (ph === 0 || ph === 4)) sfxStep(chY > SURF + 4 || chX < STAIR_X0 ? 1 : 0);
+      lastWalk = ph;
+    }
   }
 }
 
 /* =====================================================================
-   RENDER
+   POSES
    ===================================================================== */
-function drawFoldedLocal(x, y) {
-  lr(x, y, 7, 4, GR0); lr(x, y, 7, 1, GR2); lp(x, y, RIMC);
-  lr(x + 1, y + 1, 5, 1, GR1); lr(x + 1, y + 2, 4, 1, GR1);
-  lp(x + 6, y + 2, BLK); lp(x + 6, y + 3, GR1);
+var FPX = 0, FPY = 0;
+function footPos(ph, half, lift) {
+  if (ph < 0.5) { FPX = half - (ph / 0.5) * 2 * half; FPY = 0; }
+  else { var s = (ph - 0.5) / 0.5; FPX = -half + s * 2 * half; FPY = lift * Math.sin(Math.PI * s); }
 }
-function drawFoldedW(x, y, half) {
-  if (half) {
-    lineP(x - 3, y - 1, x - 5, y - 2, GR1); lineP(x + 3, y - 1, x + 5, y - 2, GR1);
-    lineP(x - 3, y + 1, x - 6, y + 1, GR2); lineP(x + 3, y + 1, x + 6, y + 1, GR2);
-    rect(x - 6, y - 3, 3, 1, GR1); rect(x + 4, y - 3, 3, 1, GR1);
-  } else { rect(x - 4, y, 9, 1, GR1); rect(x - 4, y + 1, 9, 1, GR2); }
-  rect(x - 3, y - 1, 7, 3, GR0); rect(x - 3, y, 7, 1, GR1);
-  rect(x - 2, y - 1, 5, 1, GR2); px(x - 2, y - 1, RIM);
-  px(x + 4, y + 1, BLK);
+function setLight(inside, x) {
+  LDY = -0.83;
+  if (inside) { var right = x < LAMPX; LDX = right ? 0.55 : -0.55; RIMSIDE = right ? 1 : -1; RIMCOL = WARM; }
+  else { LDX = -0.55; RIMSIDE = -1; RIMCOL = RIM; }
 }
-function drawController(x, y) {
-  lp(x, y, GR2); lp(x, y + 1, GR1); lp(x + 7, y, GR2); lp(x + 7, y + 1, GR1);
-  lr(x, y + 2, 8, 1, GR1); lr(x, y + 3, 8, 3, GR0);
-  if (pGlow >= 2) { lr(x + 2, y + 3, 4, 2, GLW1); lp(x + 3, y + 4, GLW0); lr(x + 2, y + 2, 4, 1, GLW0); }
-  else if (pGlow === 1) { lr(x + 2, y + 3, 4, 2, GLW1); lp(x + 2, y + 4, GLW0); }
-  else lr(x + 2, y + 3, 4, 2, GLW0);
-  lp(x + 1, y + 4, GR2); lp(x + 6, y + 4, GR2);
-  lp(x + 4, y + 5, lights ? ((seg === 17 && ((frame >> 3) & 1)) ? RED : GRN) : GR1);
-  lr(x - 1, y + 3, 2, 2, BLK); lp(x - 1, y + 3, GR1); lp(x + 1, y + 3 + pThL, BLK);
-  lr(x + 7, y + 3, 2, 2, BLK); lp(x + 8, y + 3, GR0); lp(x + 6, y + 3 + pThR, BLK);
-  if (pGlow >= 1) lp(x, y + 3, GLW0);
-  if (pGlow >= 2) { lp(x + 7, y + 3, GLW0); lp(x + 1, y + 3 + pThL, GLW0); }
+function buildOpPose() {
+  Q.style = 0; Q.front = chMode === 5 ? 1 : 0; Q.toeF = 0; Q.item = handItem; Q.itemAt = itemAt;
+  Q.glow = Math.round(glowS); Q.eyesDown = headS > 0.3 ? 1 : 0; Q.thumb = pThumb; Q.packY = 0;
+  Q.led = lights ? ((seg === K.MOTOR && ((frame >> 3) & 1)) ? RED : GRN) : GR1;
+  Q.ant = Math.round(Math.sin(T * 1.9) * 1.5);
+  var lean = 0.05, hipX = 0, hipY = -40, aNX = 3, aNY = -4, aFX = -3, aFY = -4, ph = 0;
+  if (chMode === 1) {
+    ph = ((walkPh % 1) + 1) % 1;
+    var half = stairBody ? 5.5 : 10, lift = stairBody ? 9 : 5;
+    footPos(ph, half, lift); aNX = FPX; aNY = -4 - FPY;
+    footPos((ph + 0.5) % 1, half, lift); aFX = FPX; aFY = -4 - FPY;
+    if (stairBody) { aNY += groundAt(chX + chFace * aNX) - chY; aFY += groundAt(chX + chFace * aFX) - chY; }
+    hipY = Math.max((aNY + aFY) / 2 - 36, Math.max(aNY, aFY) - 36.5);
+    var c2 = ph % 0.5; if (c2 < 0.1 || c2 > 0.4) hipY += 1;
+    lean = stairBody ? (chY < 300 && chFace > 0 ? 0.2 : 0.1) : 0.08;
+    Q.packY = (((ph * 4) | 0) & 1) ? -1 : 0;
+  } else if (chMode === 2) { hipX = -2; hipY = -24; lean = 0.3; aNX = 11; aFX = -15; Q.toeF = 1; }
+  else if (chMode === 4) { hipY = -32; lean = 0.18; aNX = 5; aFX = -3; }
+  else if (chMode === 3) { hipX = -3; hipY = -24; lean = 0.08; aNX = 12; aFX = 9; }
+  if (chMode !== 1) hipY += pBreath;
+  Q.hipX = hipX; Q.hipY = hipY; Q.lean = lean; Q.ankNX = aNX; Q.ankNY = aNY; Q.ankFX = aFX; Q.ankFY = aFY; Q.head = headS;
+  var cx = hipX + Math.sin(lean) * 23, cy = hipY - Math.cos(lean) * 23, cd = Math.round(ctrlS);
+  var cNX = cx + 10, cNY = cy + 15 + cd, cFX = cx + 15, cFY = cy + 14 + cd;
+  if (chArm === 1 || chArm === 2) { Q.handNX = cNX; Q.handNY = cNY; Q.handFX = cFX; Q.handFY = cFY; }
+  else if (chArm === 3) {
+    var lx = (reachX - chX) * chFace, ly = reachY - chY;
+    if (reachB) { Q.handNX = lx - 3; Q.handNY = ly; Q.handFX = lx + 4; Q.handFY = ly - 1; }
+    else { Q.handNX = lx; Q.handNY = ly; if (handItem && itemAt === 2) { Q.handFX = cFX - 3; Q.handFY = cFY; } else { Q.handFX = cx + 6; Q.handFY = cy + 19; } }
+  } else if (chMode === 1) { var sw = Math.sin(ph * 6.2832); Q.handNX = cx + 3 - 6 * sw; Q.handNY = cy + 22; Q.handFX = cx - 1 + 6 * sw; Q.handFY = cy + 22; }
+  else if (chMode === 2 || chMode === 4) { Q.handNX = cx + 11; Q.handNY = cy + 18; Q.handFX = cx + 7; Q.handFY = cy + 20; }
+  else if (chMode === 3) { Q.handNX = cx + 11; Q.handNY = cy + 16; Q.handFX = cx + 8; Q.handFY = cy + 17; }
+  else { Q.handNX = cx + 3; Q.handNY = cy + 23; Q.handFX = cx - 2; Q.handFY = cy + 23; }
+  var inside = chX < STAIR_X0 && chY >= FLOOR - 2;
+  setLight(inside, chX);
+  if (redLight) { RIMCOL = REDM; RIMSIDE = chFace > 0 ? 1 : -1; LDX = 0.55 * chFace; }
+}
+function buildPartnerPose() {
+  Q.style = 1; Q.front = 0; Q.toeF = 0; Q.item = 0; Q.itemAt = 0; Q.eyesDown = 0; Q.packY = 0; Q.thumb = 0;
+  Q.glow = partMode === 2 ? 1 : 0;
+  Q.hipX = -2; Q.hipY = -26 + pBreath; Q.lean = partMode === 2 ? 0.42 : 0.15;
+  Q.ankNX = 10; Q.ankNY = -4; Q.ankFX = 7; Q.ankFY = -4;
+  var cx = Q.hipX + Math.sin(Q.lean) * 23, cy = Q.hipY - Math.cos(Q.lean) * 23;
+  if (partMode === 1) { Q.head = 0.05; Q.handNX = cx + 6; Q.handNY = cy - 9; Q.handFX = cx + 10; Q.handFY = cy + 16; Q.item = 4; Q.itemAt = 1; }
+  else if (partMode === 2) { Q.head = 0.05; Q.handNX = cx + 10; Q.handNY = cy + 16; Q.handFX = cx + 7; Q.handFY = cy + 17; }
+  else {
+    Q.head = Math.sin(T * 0.55) > 0.75 ? 0.0 : 0.38;
+    Q.item = 5; Q.handNX = cx + 11 + pThumb; Q.handNY = cy + 13; Q.handFX = cx + 14; Q.handFY = cy + 12;
+  }
+  setLight(true, PARTX);
 }
 
-var WDX = [2, 0, -2, -1, 1, 2], WBENT = [0, 0, 0, 1, 1, 0], WLIFT = [0, 0, 0, 1, 1, 0];
-function walkLeg(far, p, baseX, bodyFeet) {
-  var lx = baseX + WDX[p], ly = 21 - WLIFT[p];
-  if (stairBody) {
-    var fxl = lx + 2, fx = FL ? CXb + 24 - fxl - 1 : CXb + fxl;
-    ly += clamp(feetY(fx) - bodyFeet, -6, 1);
-  }
-  lpart(WBENT[p] ? (far ? P_LEGKB : P_LEGK) : (far ? P_LEGB : P_LEG), lx, ly, far, 99);
-}
-function charFront() {
-  lp(3, 3, GR2); lr(3, 4, 1, 7, GR1);
-  lpart(P_FRONT, 4, 0, 0, 99);
-  if (chArm === 1) { drawFoldedLocal(9, 15 + pBreath); lr(7, 16 + pBreath, 2, 2, BLK); lr(16, 16 + pBreath, 2, 2, BLK); }
-  else { lr(4, 19, 2, 2, BLK); lr(18, 19, 2, 2, BLK); lp(4, 19, GR1); }
-}
-function charBody() {
-  if (chMode === 5) { charFront(); return; }
-  var w = pWeight, b = pBreath, dy = (chMode === 2 || chMode === 3) ? 6 : chMode === 4 ? 3 : 0;
-  var bob = (chMode === 1 && (pWalk === 1 || pWalk === 4)) ? -1 : 0;
-  var lean = pLean + (stairBody > 0 && chMode === 1 ? 1 : 0);
-  b += bob;
-  var ax = 3 + w + packX + lean, ay = 11 + packY + dy;
-  for (var i = 1; i <= 7; i++) lp(ax + (i > 4 ? pAnt : 0), ay - i, i === 7 ? GR2 : GR1);
-  lpart(P_PACK, 1 + w + packX + lean, 11 + packY + dy + bob, 0, 99);
-  if (chMode === 2) lpart(P_KNEEL, 5, 27, 0, 99);
-  else if (chMode === 3) lpart(P_SIT, 5, 27, 0, 99);
-  else if (chMode === 4) { lpart(P_LEGHB, 7, 24, 1, 99); lpart(P_LEGH, 11, 24, 0, 99); }
-  else if (chMode === 1) { var bf = Math.round(chY); walkLeg(1, (pWalk + 3) % 6, 9, bf); walkLeg(0, pWalk, 11, bf); }
-  else { lpart(P_LEGB, 8, 21, 1, 99); lpart(P_LEG, 13 + w, 21, 0, 99); }
-  w += lean;
-  lpart(P_TORSO, 5 + w, 10 + b + dy, 0, 99);
-  var hx = 8 + w, hy = b + dy;
-  if (pHead < 0) { hx++; hy++; } else if (pHead > 0) hy--;
-  lpart(P_HEAD, hx, hy, 0, 99);
-  if (pHead < 0) { lp(hx + 7, hy + 7, BRN0); lp(hx + 9, hy + 7, BRN0); }
-  else { lp(hx + 7, hy + 7, BLK); lp(hx + 9, hy + 7, BLK); }
-  if (pGlow >= 2) { lp(hx + 7, hy + 9, GLW0); lp(hx + 8, hy + 9, GLW0); if (pHead === 0) lp(hx + 9, hy + 8, GLW0); }
-  var sx = 15 + w, sy = 11 + b + dy;
-  if (chArm === 0) {
-    var sw = chMode === 1 ? (pWalk <= 1 ? 1 : (pWalk === 3 || pWalk === 4) ? -1 : 0) : 0;
-    lr(sx - 1, sy + 2, 1, 4, OL0);
-    lpart(P_ARM, sx, sy, 0, 99);
-    lr(sx + sw, sy + 7, 2, 2, BLK); lp(sx + sw, sy + 7, GR1);
-  } else if (chArm === 1 || chArm === 2) {
-    var cx = 18 + w, cy = 13 + b + dy + pCtrl, gy = cy + 3;
-    lr(sx - 1, sy + 2, 1, gy - sy - 1, OL0);
-    lpart(P_ARM, sx, sy, 0, gy - sy);
-    lr(sx, gy, cx - 1 - sx, 2, OL1); lr(sx, gy + 1, cx - 1 - sx, 1, OL0); lp(sx, gy, OL0);
-    if (chArm === 2) drawController(cx, cy);
-    else {
-      drawFoldedLocal(cx, cy + 1);
-      lr(cx - 1, cy + 3, 2, 2, BLK); lp(cx - 1, cy + 3, GR1);
-      lr(cx + 7, cy + 3, 2, 2, BLK); lp(cx + 8, cy + 3, GR0);
-    }
-  } else if (chArm === 3) {
-    lpart(P_ARM, sx, sy, 0, 5);
-    lline(sx + 1, sy + 5, 21, 27, OL1); lline(sx + 2, sy + 5, 22, 27, OL1); lline(sx + 1, sy + 6, 21, 28, OL0);
-    if (handDrone) drawFoldedLocal(20, 27);
-    lr(21 + pHand, 27, 2, 2, BLK); lp(21 + pHand, 27, GR1);
-  } else if (chArm === 4) {
-    lpart(P_ARM, sx, sy, 0, 4);
-    lr(sx, sy + 4, 6, 2, OL1); lr(sx, sy + 5, 6, 1, OL0);
-    if (handDrone) drawFoldedLocal(sx + 4, sy + 2);
-    lr(sx + 6, sy + 4, 2, 2, BLK); lp(sx + 6, sy + 4, GR1);
-  }
-}
-function drawChar() {
-  CXb = Math.round(chX) - 12; CXo = CXb; CYo = Math.round(chY) - 31; FL = chFace < 0;
-  RIMC = chY > 100 ? WARM : RIM;
-  var sy = Math.round(chY) + 1;
-  if (!stairBody) rect(Math.round(chX) - 7, sy, 14, 1, sy > 100 ? SOIL0 : GND0);
-  var bx = CXo, by = CYo;
-  FORCE = BLK;
-  CXo = bx - 1; charBody(); CXo = bx + 1; charBody(); CXo = bx; CYo = by - 1; charBody(); CYo = by + 1; charBody();
-  CYo = by; FORCE = -1;
-  charBody();
-}
-
+/* =====================================================================
+   RENDER — dynamic scene
+   ===================================================================== */
+var TRN = 8, trX = new Int16Array(TRN), trY = new Int16Array(TRN), trL = new Uint8Array(TRN), trI = 0;
 function prop(mx, my, half, idx) {
   var sp = propSpd;
-  if (sp < 0.03) { rect(mx - half, my, half * 2 + 1, 1, GR1); px(mx + half, my, GR2); return; }
+  if (sp < 0.03) { rect(mx - half, my, half * 2 + 1, 1, GR1); px(mx + half, my, GR2); px(mx - half, my, GR2); return; }
   if (sp < 0.5) {
     var f = ((propPh | 0) + idx) & 3;
     if (f === 0) rect(mx - half, my, half * 2 + 1, 1, GR1);
-    else if (f === 2) px(mx, my, GR2);
-    else { if (half > 1) rect(mx - 1, my, 3, 1, GR1); else px(mx, my, GR1); px(mx - half, my, GR0); px(mx + half, my, GR0); }
+    else if (f === 2) { px(mx, my, GR2); px(mx - 1, my, GR1); px(mx + 1, my, GR1); }
+    else { rect(mx - (half >> 1), my, half + 1, 1, GR1); px(mx - half, my, GR0); px(mx + half, my, GR0); }
     return;
   }
   rect(mx - half, my, half * 2 + 1, 1, GR0);
-  if (((frame + idx) & 1) === 0) { px(mx - half, my, GR2); px(mx + 1, my, GR1); }
-  else { px(mx + half, my, GR2); px(mx - 1, my, GR1); }
+  if (half > 3) rect(mx - half + 2, my - 1, half * 2 - 3, 1, ((frame + idx) & 1) ? GR0 : SKY3);
+  if (((frame + idx) & 1) === 0) { px(mx - half, my, GR2); px(mx + 2, my, GR1); } else { px(mx + half, my, GR2); px(mx - 2, my, GR1); }
   px(mx, my, GR1);
   if (((frame * 7 + idx * 13) % 23) === 0) px(mx - half + ((frame >> 1) % (half * 2 + 1)), my, RIM);
 }
-function navPx(x, y, c, halo, on) { if (on) { px(x, y, c); if (halo >= 0) px(x + 1, y, halo); } else px(x, y, GR0); }
+function navPx(x, y, c, halo, on) { if (on) { px(x, y, c); if (halo >= 0) { px(x + 1, y, halo); px(x, y - 1, halo); } } else px(x, y, GR0); }
 function trailLights(x, y, lvl, cR, cG) {
-  if (lvl === 1) { px(x + 5, y - 2, cR); px(x + 6, y + 2, cG); }
-  else if (lvl === 2) { px(x + 4, y - 1, cR); px(x + 5, y + 1, cG); }
+  if (lvl === 1) { px(x + 12, y - 3, cR); px(x + 14, y + 4, cG); }
+  else if (lvl === 2) { px(x + 5, y - 2, cR); px(x + 6, y + 2, cG); }
   else if (lvl === 3) { px(x + 2, y, cR); px(x + 2, y + 1, cG); }
   else if (lvl === 4) { px(x, y, cR); px(x + 1, y, cG); }
 }
+function drawFoldedW(x, y, half) {
+  if (half) {
+    lineP(x - 6, y - 2, x - 11, y - 5, GR1); lineP(x + 6, y - 2, x + 10, y - 5, GR1);
+    lineP(x - 6, y + 1, x - 12, y + 2, GR2); lineP(x + 6, y + 1, x + 12, y + 2, GR2);
+    rect(x - 15, y - 7, 7, 1, GR1); rect(x + 7, y - 7, 7, 1, GR1);
+  } else { rect(x - 8, y, 17, 1, GR1); rect(x - 8, y + 1, 17, 1, GR2); rect(x - 7, y - 1, 15, 1, GR0); }
+  rect(x - 6, y - 3, 13, 5, GR0); rect(x - 6, y - 1, 13, 1, GR1);
+  rect(x - 5, y - 3, 11, 1, GR2); px(x - 5, y - 3, RIM); px(x - 4, y - 3, RIM);
+  rect(x + 7, y, 2, 2, BLK); px(x + 8, y, GR2);
+}
 function drawDrone() {
-  if (dState === 0) { drawFoldedW(33, 106, false); return; }
-  if (dState === 1) return;
+  if (dState === 0 || dState === 1) return;
   if (dState === 2 || dState === 3) { drawFoldedW(GXD, GYD + 1, dState === 3); return; }
   if (!dVis) return;
   var x = Math.round(dX) + vibX, y = Math.round(dY) + vibY, t = dTilt;
-  // pixel motion smear: ghost nav lights where the drone was 2 and 4 frames ago
   var i2 = (trI - 2 + TRN) % TRN, i4 = (trI - 4 + TRN) % TRN;
   var sp = Math.abs(trX[trI] - trX[i4]) + Math.abs(trY[trI] - trY[i4]);
-  if (sp >= 3 && navOn && trL[i2] && trL[i4]) {
-    trailLights(trX[i2], trY[i2], trL[i2], REDD, GRND);
-    if (sp >= 5) trailLights(trX[i4], trY[i4], trL[i4], REDD, GRND);
-  }
+  if (sp >= 4 && navOn && trL[i2] && trL[i4]) { trailLights(trX[i2], trY[i2], trL[i2], REDD, GRND); if (sp >= 7) trailLights(trX[i4], trY[i4], trL[i4], REDD, GRND); }
   if (dLevel === 0) {
-    if (dAlt < 26) {
-      var sw = 13 - ((dAlt / 2.5) | 0);
-      if (sw > 2) rect(x - (sw >> 1) + ((dAlt / 6) | 0), SURF, sw, 1, GND0);
-    }
-    var bx0 = x - 4, by0 = y - 2 - t, fx0 = x + 4, fy0 = y - 2 + t;
-    var bx1 = x - 5, by1 = y + 2 - t, fx1 = x + 5, fy1 = y + 2 + t;
-    lineP(x - 3, y - 1, bx0, by0, GR1); lineP(x + 3, y - 1, fx0, fy0, GR1);
-    px(bx0, by0, GR1); px(fx0, fy0, GR1);
-    prop(bx0, by0 - 1, 2, 0); prop(fx0, fy0 - 1, 2, 1);
-    rect(x - 3, y - 1, 7, 3, GR0); rect(x - 3, y, 7, 1, GR1);
-    rect(x - 2, y - 1, 5, 1, GR2); px(x - 2, y - 1, RIM); px(x - 1, y - 1, RIM);
-    px(x - 4, y, GR0); px(x - 4, y + 1, GR0); px(x + 4, y, GR0);
-    px(x + 3, y + 2, GR1); px(x + 4, y + 1, BLK); px(x + 5, y + 1, GR2);
-    lineP(x - 3, y + 1, bx1, by1, GR2); lineP(x + 3, y + 1, fx1, fy1, GR2);
-    px(bx1, by1, GR2); px(fx1, fy1, GR2);
-    prop(bx1, by1 - 1, 2, 2); prop(fx1, fy1 - 1, 2, 3);
-    lrX = fx0 + 1; lrY = fy0; lgX = fx1 + 1; lgY = fy1;
-    navPx(lrX, lrY, RED, REDD, lights && navOn);
-    navPx(lgX, lgY, GRN, GRND, lights && navOn);
-    if (strobe) px(x - 4, y - 1, WHT);
-    if (lights) px(bx1 - 1, by1, ((frame >> 5) & 1) ? WHT : GR2);
-    if (lights && navOn && dAlt < 7) { px(lgX, SURF, GRND); px(lgX + 1, SURF, GRND); }
+    if (dAlt < 70) { var sw = 30 - ((dAlt / 2.6) | 0); if (sw > 3) rect(x - (sw >> 1) + ((dAlt / 8) | 0), SURF, sw, 1, GND0); }
+    var bx0 = x - 11, by0 = y - 4 - t, fx0 = x + 10, fy0 = y - 4 + t, bx1 = x - 13, by1 = y + 3 - t, fx1 = x + 12, fy1 = y + 3 + t;
+    lineP(x - 6, y - 2, bx0, by0, GR1); lineP(x - 6, y - 1, bx0, by0 + 1, GR0); lineP(x + 6, y - 2, fx0, fy0, GR1); lineP(x + 6, y - 1, fx0, fy0 + 1, GR0);
+    rect(bx0 - 1, by0 - 1, 3, 3, GR1); px(bx0, by0 - 1, GR2); rect(fx0 - 1, fy0 - 1, 3, 3, GR1); px(fx0, fy0 - 1, GR2);
+    prop(bx0, by0 - 3, 7, 0); prop(fx0, fy0 - 3, 7, 1);
+    rect(x - 7, y - 3, 15, 6, GR0); rect(x - 7, y, 15, 1, GR1);
+    rect(x - 6, y - 3, 13, 1, GR2); px(x - 5, y - 3, RIM); px(x - 4, y - 3, RIM); px(x - 3, y - 3, RIM);
+    rect(x - 7, y - 2, 3, 4, BLK); px(x - 6, y - 1, GR1);
+    rect(x + 8, y - 1, 2, 3, GR0);
+    rect(x + 6, y + 3, 3, 2, GR1); rect(x + 7, y + 3, 3, 2, BLK); px(x + 9, y + 3, GR2);
+    lineP(x - 6, y + 1, bx1, by1, GR2); lineP(x - 6, y + 2, bx1, by1 + 1, GR1); lineP(x + 6, y + 1, fx1, fy1, GR2); lineP(x + 6, y + 2, fx1, fy1 + 1, GR1);
+    rect(bx1 - 1, by1 - 1, 3, 3, GR1); px(bx1, by1 - 1, GR2); rect(fx1 - 1, fy1 - 1, 3, 3, GR1); px(fx1, fy1 - 1, GR2);
+    px(bx1, by1 + 2, GR0); px(fx1, fy1 + 2, GR0);
+    prop(bx1, by1 - 3, 7, 2); prop(fx1, fy1 - 3, 7, 3);
+    lrX = fx0 + 2; lrY = fy0 + 1; lgX = fx1 + 2; lgY = fy1 + 1;
+    navPx(lrX, lrY, RED, REDD, lights && navOn); navPx(lgX, lgY, GRN, GRND, lights && navOn);
+    if (strobe) { px(x - 8, y - 3, WHT); px(x - 9, y - 3, SNOWD); }
+    if (lights) px(bx1 - 2, by1, ((frame >> 5) & 1) ? WHT : GR2);
+    if (lights && navOn && dAlt < 14) { rect(lgX - 1, SURF, 4, 1, GRND); }
   } else if (dLevel === 1) {
-    rect(x - 2, y, 5, 1, GR1); px(x - 1, y, GR2); px(x + 3, y, BLK);
-    prop(x - 2, y - 1 - t, 1, 0); prop(x + 2, y - 1 + t, 1, 1); prop(x - 3, y + 1 - t, 1, 2); prop(x + 3, y + 1 + t, 1, 3);
-    navPx(x + 4, y - 1 + t, RED, -1, navOn); navPx(x + 5, y + 1 + t, GRN, -1, navOn);
-    if (strobe) px(x - 3, y, WHT);
+    rect(x - 4, y - 1, 9, 3, GR0); rect(x - 3, y - 1, 7, 1, GR2); px(x + 5, y, BLK);
+    prop(x - 5, y - 3 - t, 3, 0); prop(x + 5, y - 3 + t, 3, 1); prop(x - 6, y + 2 - t, 3, 2); prop(x + 6, y + 2 + t, 3, 3);
+    lineP(x - 4, y - 1, x - 5, y - 2 - t, GR1); lineP(x + 4, y - 1, x + 5, y - 2 + t, GR1);
+    navPx(x + 7, y - 2 + t, RED, -1, navOn); navPx(x + 8, y + 2 + t, GRN, -1, navOn);
+    if (strobe) px(x - 5, y - 1, WHT);
   } else if (dLevel === 2) {
-    rect(x - 1, y, 3, 1, GR1);
-    px(x - 2, y - 1, (frame & 1) ? GR1 : GR0); px(x + 2, y - 1, (frame & 1) ? GR0 : GR1);
-    if (navOn) { px(x + 2, y, RED); px(x + 2, y + 1, GRN); }
-    if (strobe) px(x - 2, y, WHT);
+    rect(x - 2, y, 5, 2, GR1); px(x - 1, y, GR2);
+    rect(x - 4, y - 1, 2, 1, (frame & 1) ? GR1 : GR0); rect(x + 3, y - 1, 2, 1, (frame & 1) ? GR0 : GR1);
+    if (navOn) { px(x + 4, y, RED); px(x + 4, y + 2, GRN); }
+    if (strobe) px(x - 3, y, WHT);
   } else {
     if (navOn) { px(x, y, RED); px(x + 1, y, GRN); }
     if (strobe) px(x - 1, y, WHT);
   }
 }
 
-function drawInterior() {
-  var fl = hash((T * 12) | 0, 5) < 0.04;
-  px(LAMPX, ROOM_Y0 + 4, fl ? WARM : LAMP); px(LAMPX - 1, ROOM_Y0 + 4, WARM); px(LAMPX + 1, ROOM_Y0 + 4, WARM);
-  var x0 = 22, y0 = 99;
-  if (seg >= 15 && seg <= 27) {                                // laptop: miniature thermal feed
-    rect(x0, y0, 6, 6, TH1);
-    var hz = y0 + 2 + (dState === 5 ? clamp(Math.round(dAlt / 20), 0, 2) : 0);
-    rect(x0, hz, 6, 1, TH2);
-    px(x0 + ((T * 4) | 0) % 6, hz + 2, TH3); px(x0 + 3, y0 + 3, TH5);
-    px(x0 + 5, y0, (frame >> 4) & 1 ? RED : TH1);
-    px(x0, y0, TH5); px(x0 + 1, y0, TH5);
-  } else { rect(x0, y0, 6, 6, GR0); px(x0 + 1, y0 + 1, GLW0); }
-  var held = (seg > 14 && seg < 27) || (seg === 14 && st / SEG[14] >= 0.55) || (seg === 27 && st / SEG[27] < 0.6);
-  if (!held) { rect(31, 106, 7, 2, GR0); rect(31, 106, 7, 1, GR1); px(33, 106, GLW0); px(31, 105, GR2); px(37, 105, GR2); }
-  px(72, 95, ((frame >> 5) & 1) ? GRN : GRND);
-  if (((T * 0.8) % 1) < 0.5) { px(MAST_X, SURF - 36, RED); px(MAST_X + 1, SURF - 36, REDD); } else px(MAST_X, SURF - 36, REDD);
-  var nb = Math.sin(T * 0.4) > 0.6, hx = 217 + (nb ? 1 : 0);
-  rect(hx, SURF - 3, 5, 3, OL1); rect(hx + 1, SURF - 4, 3, 1, OL1); px(hx + 1, SURF - 4, RIM); px(hx, SURF - 3, RIM);
-  rect(hx, SURF - 1, 5, 1, OL0); px(nb ? hx + 4 : hx, SURF, BLK);
-}
-
-function drawTufts() {
-  var wash = dState === 5 && dVis && propSpd > 0.4 && dAlt < 22;
-  for (var i = 0; i < NT; i++) {
-    var x = tX[i], y = surfY(x) - 1;
-    var b = Math.sin(T * 1.1 + i * 1.7) * 0.8;
-    if (wash) {
-      var d = x - dX, ad = d < 0 ? -d : d;
-      if (ad < 24) {
-        var sg = d < 0 ? -1 : 1;
-        b += sg * (ad < 12 ? 2 : 1) * (dAlt < 12 ? 1 : 0.6);
-        if ((((frame >> 2) + i) & 1) === 1) b -= sg * 0.7;
-      }
+function drawCase() {
+  var x0 = 200, y0 = 339;
+  if (caseOpen > 0) {
+    rect(x0 + 2, y0 + 1, 23, 8, BLK); rect(x0 + 2, y0 + 1, 23, 1, GR0);
+    if (dState === 0) {
+      rect(x0 + 6, y0 + 3, 14, 4, GR0); rect(x0 + 7, y0 + 3, 12, 1, GR2); rect(x0 + 6, y0 + 5, 14, 1, GR1);
+      if (T - propFlick < 0.7) { var f2 = (frame >> 1) & 1; rect(x0 + 2, y0 + 2, 7, 1, f2 ? GR1 : GR0); px(f2 ? x0 + 2 : x0 + 8, y0 + 2, GR2); }
+      if (dBat) px(x0 + 18, y0 + 4, ((frame >> 4) & 1) ? GRN : GRND); else rect(x0 + 15, y0 + 4, 4, 1, BLK);
     }
-    b = Math.round(b); if (b > 2) b = 2; if (b < -2) b = -2;
-    for (var k = -1; k <= 1; k++) {
-      var bh = 4 - (k !== 0 ? 1 : 0);
-      for (var j = 0; j < bh; j++) px(x + k + Math.round(b * j / bh), y - j, j >= bh - 1 ? GRS1 : GRS0);
+    var th = caseOpen * 1.75, ex = Math.round(x0 + 27 * Math.cos(th)), ey = Math.round(y0 - 27 * Math.sin(th));
+    lineP(x0, y0, ex, ey, GR1); lineP(x0 + 1, y0, ex + 1, ey, GR0); lineP(x0 + 2, y0, ex + 2, ey, GR0);
+  } else {
+    rect(x0, y0, 27, 2, GR1); rect(x0, y0 + 2, 27, 1, BLK);
+  }
+  rect(x0, y0 + 3, 27, 7, GR0); rect(x0, y0 + 3, 1, 7, GR1); rect(x0 + 26, y0 + 3, 1, 7, BLK);
+  px(x0 + 3, y0 + 5, GR2); px(x0 + 23, y0 + 5, GR2); rect(x0 + 10, y0 + 9, 7, 1, BLK);
+  if (caseOpen === 0) rect(x0 + 9, y0 - 2, 9, 2, GR1);
+}
+function drawRoom() {
+  // lamp
+  var fl = hash((T * 12) | 0, 5) < 0.04;
+  rect(LAMPX - 1, 275, 3, 2, fl ? WARM : LAMP); px(LAMPX - 2, 276, WARM); px(LAMPX + 2, 276, WARM); px(LAMPX, 277, WARM);
+  // stove fire + glow
+  rect(47, 335, 9, 7, BLK);
+  for (var fy = 0; fy < 5; fy++) for (var fx = 0; fx < 7; fx++) {
+    var hh = hash(fx + ((frame >> 2) * 7), fy + 3), c = fy > 3 ? FIRE1 : hh < 0.25 ? FIRE2 : hh < 0.6 ? FIRE1 : FIRE0;
+    if (fy < 2 && hh > 0.5) continue; px(48 + fx, 336 + fy, c);
+  }
+  for (var gx = 40; gx < 66; gx++) if (bay(gx, 349) < 6 - Math.abs(gx - 52) / 3 + ((frame >> 3) & 1)) px(gx, 349, gx & 1 ? FIRE0 : WARM);
+  px(45, 330, FIRE0); px(57, 333, FIRE0);
+  // charger: 4 batteries, slot 1 is the one that flies
+  for (var b = 0; b < 4; b++) {
+    var bx = 206 + 5 * b, has = b !== 1 || batOnCharger;
+    if (has) { rect(bx, 292, 4, 6, GR1); rect(bx, 292, 4, 1, GR2); }
+    else rect(bx, 292, 4, 6, BLK);
+    var led = !has ? GR0 : (b === 1 ? (((frame >> 4) & 1) ? AMB : BRN0) : GRN);
+    px(bx + 1, 298, led);
+  }
+  drawCase();
+  // laptop lid + screen
+  rect(132, 304, 2, 16, GR0); rect(134, 304, 13, 15, GR0); rect(134, 304, 13, 1, GR1);
+  if (seg >= K.PREFLIGHT && seg <= K.SPIN) {
+    rect(135, 305, 11, 13, TH1);
+    var hz = 309 + (dState === 5 ? clamp(Math.round(dAlt / 60), 0, 3) : 0);
+    rect(135, hz, 11, 1, TH2); rect(135, hz + 1, 11, 317 - hz, TH0);
+    px(135 + ((T * 5) | 0) % 11, hz + 3, TH3); px(140, 311, TH5); px(145, 305, ((frame >> 4) & 1) ? RED : TH1);
+    rect(135, 305, 3, 1, TH5);
+  } else { rect(135, 305, 11, 13, SKY2); rect(137, 307, 5, 3, SKY3); px(143, 315, GLW0); }
+  // controller resting on the table
+  if (ctrlOnTable) { rect(152, 319, 13, 2, GR0); rect(152, 319, 13, 1, GR1); px(157, 319, GLW0); px(152, 317, GR2); px(152, 318, GR1); px(164, 317, GR2); px(164, 318, GR1); }
+  // phone handset on its cradle
+  if (partMode !== 1) { rect(167, 314, 10, 2, BLK); rect(168, 314, 8, 1, GR0); }
+  // puddle, drip, ripple
+  for (var x = 228; x <= 248; x++) { px(x, FLOOR - 1, WATR); if (x > 229 && x < 247) px(x, FLOOR, WATR); }
+  var sh = ((frame >> 3) % 3); px(235 + sh, FLOOR - 1, WARM); px(236 + sh, FLOOR - 1, LAMP); px(241 - sh, FLOOR, WOOD1);
+  var dp = (T % 2.3), fallT = 0.41;
+  if (dp < fallT) { var dy = Math.round(265 + 500 * dp * dp); rect(240, dy, 1, 2, SNOWD); }
+  else if (dp < fallT + 0.7) { var rr = Math.round((dp - fallT) * 11); px(240 - rr, FLOOR - 1, MOONS); px(240 + rr, FLOOR - 1, MOONS); if (rr < 3) px(240, FLOOR - 2, SNOWD); }
+  if (dp < 0.06) { px(240, 265, SNOWD); }
+}
+function drawDoorLight() {
+  if (curO < 0.05) return;
+  var reachX = 262 + Math.round(70 * curO);
+  for (var x = 262; x < reachX; x++) {
+    var ty = treadY(x), top = 300 - Math.round((x - 262) * 0.6);
+    for (var y = top; y < ty; y++) {
+      var d = (x - 262) / 70 + (ty - y) / 90;
+      if (bay(x, y) < 16 * curO * (1 - d) * 1.4) px(x, y, (x - 262) % 9 === 0 ? WOOD1 : WOOD0);
+    }
+    if (bay(x, ty) < 16 * curO) px(x, ty, WARM);
+  }
+}
+function drawCurtain() {
+  var w = 12 - Math.round(8 * curO), bot = FLOOR - 1 - Math.round(curO * 10);
+  for (var x = 0; x < w; x++) for (var y = ROOM_Y0 + 1; y <= bot - (x === w - 1 ? 3 : 0); y++) {
+    var c = ((x + ((y / 9) | 0)) % 3 === 0) ? OL0 : (x & 1 ? OL1 : KHD);
+    if (hash(x + 9, y >> 2) < 0.15) c = CL0;
+    px(250 + x, y, c);
+  }
+  rect(249, ROOM_Y0, w + 2, 1, BRN0);
+}
+function drawRedLight() {
+  if (!redLight) return;
+  var ox_ = Math.round(chX + chFace * 9), oy_ = chY - 52;
+  px(ox_, oy_, RED); px(ox_ + chFace, oy_, REDM);
+  for (var dy = 0; dy < 70; dy++) for (var dx = -10; dx < 60; dx++) {
+    var x = ox_ + chFace * dx, y = oy_ + dy;
+    var ang = Math.atan2(dy, dx) - 0.9; if (ang < -0.5 || ang > 0.5) continue;
+    var dist = Math.sqrt(dx * dx + dy * dy); if (dist > 70) continue;
+    var lv = (1 - dist / 70) * (1 - Math.abs(ang) * 1.6);
+    if (x >= STAIR_X0 && x < STAIR_END) {
+      var ty = treadY(x);
+      if (y === ty) { if (bay(x, y) < lv * 30) px(x, y, REDM); }
+      else if (y > SURF && y < ty && bay(x, y) < lv * 9) px(x, y, REDD);
+    } else if (x >= 246 && x < STAIR_X0 && y < FLOOR && bay(x, y) < lv * 6) px(x, y, REDD);
+  }
+}
+function catPix(dx, dy, up, tail, br) {
+  var bx = (dx - 7) / 7.5, by = (dy - 5 + br) / 3.6;
+  var hx = dx - 15, hy = dy - (up ? 2 : 4);
+  if (hx * hx + hy * hy <= 9.5) { if (hx === 1 && hy === 0) return up ? LAMP : BR1; if (hx === 3 && hy === 1) return SK3; return hy > 1 ? BR2 : (hx & 1 ? WARM : BR2); }
+  if ((hx === -2 || hx === 2) && hy === -3) return WARM;
+  if (bx * bx + by * by <= 1) { if (dy > 6 - br) return BR1; return ((dx + (dy >> 1)) % 3 === 0) ? BR1 : WARM; }
+  if (dy === 7 && dx >= 3 && dx <= 12 + tail) return BR2;
+  return -1;
+}
+function drawCat(x0, y0) {
+  var up = catUp, tail = Math.sin(T * 0.9) > 0.85 ? 2 : 0, br = Math.sin(T * 1.6) > 0 ? 1 : 0;
+  for (var dy = -1; dy < 9; dy++) for (var dx = -1; dx < 20; dx++) {
+    var c = catPix(dx, dy, up, tail, br);
+    if (c < 0) { if (catPix(dx - 1, dy, up, tail, br) >= 0 || catPix(dx + 1, dy, up, tail, br) >= 0 || catPix(dx, dy - 1, up, tail, br) >= 0 || catPix(dx, dy + 1, up, tail, br) >= 0) px(x0 + dx, y0 + dy, BLK); }
+    else px(x0 + dx, y0 + dy, c);
+  }
+}
+function drawMouse(lt) {
+  var ts = [70.0, 104.0];
+  for (var i = 0; i < 2; i++) {
+    var d = lt - ts[i]; if (d < 0 || d > 1.4) continue;
+    var mx = Math.round(i === 0 ? 245 - d * 30 : 30 + d * 22), dir = i === 0 ? -1 : 1, hop = ((frame >> 2) & 1);
+    rect(mx, FLOOR - 3 - hop, 4, 2, GR1); px(mx + (dir > 0 ? 3 : 0), FLOOR - 4 - hop, GR2); px(mx + (dir > 0 ? 4 : -1), FLOOR - 3 - hop, BLK);
+    rect(mx + (dir > 0 ? -3 : 4), FLOOR - 2, 3, 1, GR0);
+  }
+}
+function owlPix(dx, dy, look, blink) {
+  var bx = dx / 3.6, by = (dy - 6) / 5;
+  var hx = dx, hy = dy;
+  if (hx * hx / 12 + (hy + 0.5) * (hy + 0.5) / 9 <= 1) {
+    var ex = look > 0 ? 1 : look < 0 ? -1 : 0;
+    if (hy === 0 && (hx === -1 + ex || hx === 1 + ex)) return blink ? BRN0 : LAMP;
+    if (hy >= -1 && hy <= 1 && hx >= -2 + ex && hx <= 2 + ex) return MOONS;
+    return BR1;
+  }
+  if ((dx === -3 || dx === 3) && dy === -3) return BR1;
+  if (bx * bx + by * by <= 1) return (dy > 6 && (dx + dy) % 3 === 0) ? MOONS : (dx < 0 ? BR2 : BRN0);
+  return -1;
+}
+function drawOwl(lt) {
+  var x0 = OWLX + 14, y0 = OWLY - 11;
+  var look = (dVis && dState === 5 && dX > OWLX - 120) ? (dX > OWLX ? 1 : -1) : (Math.sin(lt * 0.37) > 0.6 ? 1 : 0);
+  var blink = (lt % 4.3) < 0.15;
+  for (var dy = -4; dy < 13; dy++) for (var dx = -5; dx < 6; dx++) {
+    var c = owlPix(dx, dy, look, blink);
+    if (c < 0) { if (owlPix(dx - 1, dy, look, blink) >= 0 || owlPix(dx + 1, dy, look, blink) >= 0 || owlPix(dx, dy - 1, look, blink) >= 0) px(x0 + dx, y0 + dy, BLK); }
+    else px(x0 + dx, y0 + dy, c);
+  }
+}
+function drawArtilleryGlow(lt, ox_, oy_) {
+  for (var e = 0; e < ART.length; e++) {
+    var dt = lt - ART[e][0]; if (dt < 0 || dt > 1.3) continue;
+    var I = dt < 0.07 ? 1 : Math.exp(-(dt - 0.07) * 4.5);
+    if ((e & 1) && dt > 0.2 && dt < 0.3) I = Math.max(I, 0.8);
+    var gx = ART[e][1] + ox_, gy = farY(ART[e][1]) + 4 + oy_, rx = 26 + 34 * I, ry = 10 + 16 * I;
+    for (var dy = -ry; dy <= 2; dy++) for (var dx = -rx; dx <= rx; dx++) {
+      var n = (dx / rx) * (dx / rx) + (dy / ry) * (dy / ry); if (n >= 1) continue;
+      var lv = I * (1 - n), x = Math.round(gx + dx), y = Math.round(gy + dy);
+      if (bay(x, y) < 16 * Math.min(1, lv * 2.4)) px(x, y, lv > 0.55 ? FLH2 : lv > 0.26 ? FLH1 : FLH0);
     }
   }
+}
+function drawBirds(lt, ox_, oy_) {
+  for (var e = 0; e < ART.length; e++) {
+    if (!ART[e][3]) continue;
+    var d = lt - ART[e][0] - ART[e][2]; if (d < 0 || d > 8) continue;
+    for (var i = 0; i < 14; i++) {
+      var h1 = hash(i, e * 7), h2 = hash(e, i * 3);
+      var bx = ART[e][1] + (h1 - 0.5) * 50 + d * (-22 - h2 * 18), by = farY(ART[e][1]) - 14 - h2 * 10 - d * (14 + h1 * 6) + 2 * Math.sin(d * 3 + i);
+      var x = Math.round(bx + ox_), y = Math.round(by + oy_), fl = ((frame >> 3) + i) & 1;
+      px(x, y, TREE); px(x - 1, y - fl, TREE); px(x + 1, y - fl, TREE); if (d < 5) { px(x - 2, y - 1 + fl, TREE); px(x + 2, y - 1 + fl, TREE); }
+    }
+  }
+}
+function drawNeighbour() {
+  var nb = Math.sin(T * 0.4) > 0.6, hx = 648 + (nb ? 2 : 0);
+  rect(hx, SURF - 6, 10, 6, OL1); rect(hx + 1, SURF - 8, 8, 2, OL1); rect(hx + 2, SURF - 9, 6, 1, OL0);
+  px(hx + 2, SURF - 8, RIM); px(hx + 1, SURF - 6, RIM); rect(hx, SURF - 1, 10, 1, OL0); px(nb ? hx + 9 : hx, SURF - 3, BLK);
 }
 function drawParticles(front) {
   for (var i = 0; i < NP; i++) {
     if (!pA[i]) continue;
     var t = pT[i], r = pL[i] / pML[i], c;
-    if (front !== (t === 3 || t === 4)) continue;
+    var isFront = t === 3 || t === 4 || t === 7 || t === 10 || t === 8;
+    if (front !== isFront) continue;
     if (t === 0) c = r > 0.6 ? DST0 : r > 0.3 ? GND2 : GR0;
     else if (t === 2) c = (r > 0.25 && r < 0.75) ? CLDL : SKY3;
     else if (t === 3) c = r > 0.5 ? RED : REDD;
     else if (t === 4) c = r > 0.5 ? GRN : GRND;
-    else c = SOIL2;
+    else if (t === 6) c = SOIL2;
+    else if (t === 7) c = (i % 3 === 0) ? SNOW : SNOWD;
+    else if (t === 8) c = MOONS;
+    else if (t === 9) c = r > 0.5 ? SNOWD : WOOD1;
+    else c = r > 0.55 ? SNOWD : r > 0.25 ? CLDL : SKY3;
+    if (t === 9 && bay(pX[i] | 0, pY[i] | 0) > 10 * r) continue;
     px(Math.round(pX[i]), Math.round(pY[i]), c);
+    if (t === 7 && (i % 5 === 0)) px(Math.round(pX[i]) + 1, Math.round(pY[i]), SNOWD);
   }
 }
-
 function drawFPV() {
-  var u = fpvT / SEG[23], e = ease(u);
-  var dist = Math.round(e * (FMH - H - 12));
-  var ox = -24 - Math.round(14 * Math.sin(fpvT * 0.7)) + Math.round(e * 8);
-  var oy = -(FMH - H - dist);
-  g.drawImage(fpvC, ox, oy);
-  // a hare crossing the field (white-hot)
-  var hxm = 40 + fpvT * 18, hym = FMH - 175 - fpvT * 5, hop = ((fpvT * 6) | 0) & 1;
-  var hx = Math.round(hxm + ox), hy = Math.round(hym + oy) - hop;
-  rect(hx, hy, 3, 2, TH5); px(hx + 3, hy - 1, TH5); px(hx - 1, hy + 1, TH4); px(hx + 1, hy + 2, TH3);
-  // neighbour in his foxhole
-  px(172 + ox, OWN_Y - 2 + oy, TH5); px(173 + ox, OWN_Y - 2 + oy, TH4);
-  // sensor grain + analog interference
-  for (var k = 0; k < 90; k++) { var gx = (hash(frame, k) * W) | 0, gy = (hash(k, frame + 7) * H) | 0; px(gx, gy, hash(gx, gy + frame) < 0.5 ? TH2 : TH0); }
+  var u = fpvT / SEG[K.FPV], e = ease(u);
+  var dist = Math.round(e * (FMH - H - 30));
+  var ox_ = -Math.round((FMW - W) / 2) - Math.round(30 * Math.sin(fpvT * 0.7)) + Math.round(e * 16), oy_ = -(FMH - H - dist);
+  g.drawImage(fpvC, ox_, oy_);
+  var hxm = 100 + fpvT * 45, hym = FMH - 430 - fpvT * 12, hop = ((fpvT * 6) | 0) & 1;
+  var hx = Math.round(hxm + ox_), hy = Math.round(hym + oy_) - hop;
+  rect(hx, hy, 5, 3, TH5); rect(hx + 5, hy - 2, 2, 3, TH5); px(hx - 1, hy + 1, TH4); rect(hx + 1, hy + 3, 3, 1, TH3);
+  for (var k = 0; k < 220; k++) { var gx = (hash(frame, k) * W) | 0, gy = (hash(k, frame + 7) * H) | 0; px(gx, gy, hash(gx, gy + frame) < 0.5 ? TH2 : TH0); }
   if (hash(frame >> 1, 3) < 0.16) { var ly = (hash(frame, 7) * H) | 0; for (var x = 0; x < W; x += 2) px(x + (frame & 1), ly, hash(x, frame) < 0.5 ? TH1 : TH3); }
   g.drawImage(VIGN, 0, 0);
-  // OSD
-  var alt = 25 + 95 * e, spd = 8 + 34 * Math.min(1, u * 3) * (1 - 0.3 * e), dst = dist * 2.7, bat = 87 - 6 * u;
-  textS('ALT', 6, 5); numS(alt, 3, 20, 5); textS('M', 33, 5);
-  textS('SPD', 6, 12); numS(spd, 2, 20, 12);
-  textS('WH', 6, 19);
-  textS('D', 6, 97); numS(dst, 4, 12, 97); textS('M', 29, 97);
-  rect(165, 5, 17, 7, TH0); rect(164, 4, 17, 7, TH5); rect(165, 5, 15, 5, TH0); rect(181, 6, 1, 3, TH5);
-  rect(166, 6, Math.round(13 * bat / 100), 3, TH4); numS(bat, 2, 168, 13); textS('%', 176, 13);
-  for (var s = 0; s < 4; s++) rect(146 + s * 3, 10 - s * 2, 2, 1 + s * 2, s < 3 || ((frame >> 4) & 1) ? TH5 : TH2);
-  if ((frame >> 5) & 1) rect(84, 5, 2, 2, RED);
-  textS('REC', 88, 5);
+  var alt = 25 + 95 * e, spd = 8 + 34 * Math.min(1, u * 3) * (1 - 0.3 * e), dst = dist * 1.1, bat = 87 - 6 * u;
+  var L = 10, R2 = W - 10, B = H - 12;
+  textS('ALT', L, 9); numS(alt, 3, L + 14, 9); textS('M', L + 27, 9);
+  textS('SPD', L, 16); numS(spd, 2, L + 14, 16); textS('WH', L, 23);
+  textS('D', L, B); numS(dst, 4, L + 6, B); textS('M', L + 23, B);
+  rect(R2 - 18, 9, 17, 7, TH0); rect(R2 - 19, 8, 17, 7, TH5); rect(R2 - 18, 9, 15, 5, TH0); rect(R2 - 2, 10, 1, 3, TH5);
+  rect(R2 - 17, 10, Math.round(13 * bat / 100), 3, TH4); numS(bat, 2, R2 - 15, 17); textS('%', R2 - 7, 17);
+  for (var s = 0; s < 4; s++) rect(R2 - 38 + s * 3, 14 - s * 2, 2, 1 + s * 2, s < 3 || ((frame >> 4) & 1) ? TH5 : TH2);
+  var cxm = W >> 1, cym = H >> 1;
+  if ((frame >> 5) & 1) rect(cxm - 12, 9, 2, 2, RED);
+  textS('REC', cxm - 8, 9);
   var tt = 41 + (fpvT | 0);
-  numS((tt / 60) | 0, 2, 166, 97); textS(':', 174, 97); numS(tt % 60, 2, 178, 97);
-  rect(90, 53, 3, 1, TH5); rect(99, 53, 3, 1, TH5); rect(96, 48, 1, 3, TH5); rect(96, 56, 1, 3, TH5);
-  var hz = 53 + Math.round(2 * Math.sin(fpvT * 1.3));
-  rect(52, hz, 10, 1, TH4); rect(130, hz, 10, 1, TH4);
-  if (fpvT < 0.25 || fpvT > SEG[23] - 0.25) g.drawImage(STATIC[frame % 3], 0, 0);
+  numS((tt / 60) | 0, 2, R2 - 21, B); textS(':', R2 - 13, B); numS(tt % 60, 2, R2 - 9, B);
+  rect(cxm - 7, cym, 4, 1, TH5); rect(cxm + 4, cym, 4, 1, TH5); rect(cxm, cym - 7, 1, 4, TH5); rect(cxm, cym + 4, 1, 4, TH5);
+  var hz = cym + Math.round(3 * Math.sin(fpvT * 1.3));
+  rect(cxm - 70, hz, 14, 1, TH4); rect(cxm + 57, hz, 14, 1, TH4);
+  if (fpvT < 0.25 || fpvT > SEG[K.FPV] - 0.25) g.drawImage(STATIC[frame % 3], 0, 0);
 }
-
 function render() {
-  g = octx;
-  g.setTransform(1, 0, 0, 1, M, M);
+  if (poseDirty) { buildOpPose(); renderChar(opBuf, chFace); buildPartnerPose(); renderChar(ptBuf, 1); poseDirty = 0; }
+  g = octx; g.setTransform(1, 0, 0, 1, M, M);
+  var lt = loopTime();
   if (fpv) drawFPV();
   else {
-    var skx = -Math.round(camX * 0.08), sky = -Math.round(camY * 0.3);
+    var skx = -Math.round(camX * 0.08), sky = -Math.round((camY + 80) * 0.3);
     g.drawImage(skyC, skx - M, sky - M);
     for (var i = 0; i < NS; i++) {
       var v = Math.sin(T * sSp[i] + sPh[i]), x = sX[i] + skx, y = sY[i] + sky;
-      if (sB[i]) { if (v > -0.3) px(x, y, MOON); else if (v > -0.85) px(x, y, CLDL); }
+      if (sB[i] === 2) { px(x, y, v > -0.5 ? WHT : MOON); if (v > 0.3) { px(x - 1, y, CLDL); px(x + 1, y, CLDL); px(x, y - 1, CLDL); px(x, y + 1, CLDL); } }
+      else if (sB[i] === 1) { if (v > -0.3) px(x, y, MOON); else if (v > -0.85) px(x, y, CLDL); }
       else { if (v > 0.1) px(x, y, CLDL); else if (v > -0.6) px(x, y, SKY3); }
     }
-    g.drawImage(treeC, -Math.round(camX * 0.4) - M, -camY);
-    if (zoom === 2) g.drawImage(DOFC, 0, 0);                       // far planes drop out of focus
+    var tox = -Math.round(camX * 0.4);
+    drawArtilleryGlow(lt, tox, -camY);
+    g.drawImage(treeC, tox - M, -camY);
+    drawBirds(lt, tox, -camY);
+    if (zoom === 2) g.drawImage(DOFC, 0, 0);
     g.drawImage(worldC, -camX, -camY);
     g.setTransform(1, 0, 0, 1, M - camX, M - camY);
-    drawInterior();
+    drawDoorLight();
+    drawRoom();
+    drawCat(84, 309);
+    drawMouse(lt);
+    drawOwl(lt);
+    drawNeighbour();
+    g.drawImage(ptBuf.c, PARTX - COX, FLOOR - COY);
     drawParticles(false);
-    drawTufts();
-    if (dState === 0 || dState === 2 || dState === 3) drawDrone();
-    drawChar();
+    if (dState >= 2 && dState <= 3) drawDrone();
+    drawRedLight();
+    rect(Math.round(chX) - 10, chY, 20, 1, chY > 300 ? SOIL0 : GND0);
+    g.drawImage(opBuf.c, Math.round(chX) - COX, chY - COY);
     if (dState >= 4) drawDrone();
+    drawCurtain();
     drawParticles(true);
   }
   g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1098,22 +1453,19 @@ function render() {
 }
 
 /* =====================================================================
-   AUDIO — one graph, used live (AudioContext) and for export
-   (OfflineAudioContext). All voices are persistent nodes driven by
-   automation, so nothing is allocated while the animation runs.
+   AUDIO — one graph for live play (AudioContext) and export
+   (OfflineAudioContext). All voices are persistent, driven by automation.
    ===================================================================== */
-var AC = null, OFF = false, offT = 0, audioOn = false, prevL = -1e-9;
+var AC = null, OFF = false, offT = 0, audioOn = false, prevL = -1e-9, prevDp = 0;
 var A_comp, A_music, A_rev, A_sfx, A_outLP, A_pad = [], A_padF, A_padG, A_bass1, A_bass2, A_bassG;
 var A_arp1, A_arp2, A_arpG, A_bell = [], bellIdx = 0, A_kick, A_kickG, A_boom, A_boomG, A_boomNG, A_rsF, A_rsG;
-var A_windG, A_m = [], A_mG, A_mNF, A_mNG, A_mPan, A_stF, A_stG, A_stPan, A_th, A_thG, A_bp, A_bpG, A_humG;
-var A_rnG, A_rnBG, A_sqF, A_sqG;
-
+var A_windG, A_m = [], A_mG, A_mNF, A_mNG, A_mPan, A_stF, A_stG, A_stPan, A_th, A_thG, A_bp, A_bpG, A_humG, A_rnG, A_rnBG, A_sqF, A_sqG;
+var A_plk, A_plkG, A_crkG, A_buzzG, A_owl, A_owlG, A_crickG, A_bark, A_barkF, A_barkG, A_creak, A_creakG, A_flutG, A_rumbG, A_rsubG, A_rsub, A_whF, A_whG;
 function tnow() { return OFF ? offT : AC.currentTime + 0.03; }
 function hold(p, t) { if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t); else p.cancelScheduledValues(t); }
 function hit(p, v, t, atk, relAt, relTc) { hold(p, t); p.setTargetAtTime(v, t, atk); p.setTargetAtTime(0, t + relAt, relTc); }
 function tgt(p, v, tc) { p.setTargetAtTime(v, tnow(), tc); }
 function midiF(m) { return 440 * Math.pow(2, (m - 69) / 12); }
-
 function buildAudio(ctx, offline) {
   AC = ctx; OFF = offline;
   var sr = ctx.sampleRate, i;
@@ -1124,161 +1476,127 @@ function buildAudio(ctx, offline) {
   function G(v, dst) { var gg = ctx.createGain(); gg.gain.value = v; if (dst) gg.connect(dst); return gg; }
   function F(type, f, qq, dst) { var b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = qq; b.connect(dst); return b; }
   function O(type, f, dst) { var o = ctx.createOscillator(); o.type = type; o.frequency.value = f; o.connect(dst); o.start(0); return o; }
-  function P(pan, dst) { var p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(dst); return p; }
+  function Pn(pan, dst) { var p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(dst); return p; }
+  function AM(rate, dst) { var a = G(0.5, dst); O('square', rate, G(0.5, a.gain)); return a; }
   var master = G(0.9, ctx.destination);
   A_comp = ctx.createDynamicsCompressor();
   A_comp.threshold.value = -15; A_comp.knee.value = 8; A_comp.ratio.value = 4; A_comp.attack.value = 0.006; A_comp.release.value = 0.25;
   A_comp.connect(master);
-  // reverb (generated impulse response)
   var irLen = Math.round(sr * 2.8), ir = ctx.createBuffer(2, irLen, sr), s2 = 777;
-  for (var ch = 0; ch < 2; ch++) {
-    var dd = ir.getChannelData(ch);
-    for (i = 0; i < irLen; i++) { s2 = (Math.imul(s2, 1103515245) + 12345) & 0x7fffffff; dd[i] = (s2 / 0x3fffffff - 1) * Math.exp(-3.4 * i / irLen) * (i < sr * 0.012 ? i / (sr * 0.012) : 1); }
-  }
+  for (var ch = 0; ch < 2; ch++) { var dd = ir.getChannelData(ch); for (i = 0; i < irLen; i++) { s2 = (Math.imul(s2, 1103515245) + 12345) & 0x7fffffff; dd[i] = (s2 / 0x3fffffff - 1) * Math.exp(-3.4 * i / irLen) * (i < sr * 0.012 ? i / (sr * 0.012) : 1); } }
   A_rev = ctx.createConvolver(); A_rev.buffer = ir; A_rev.connect(G(0.35, A_comp));
-  A_music = G(0.55, A_comp);
-  var musicRev = G(0.5, A_rev);
-  A_sfx = G(1.0, A_comp);
-  A_outLP = F('lowpass', 6000, 0.7, A_sfx);
-  // pad: 4 notes x 2 detuned saws
+  A_music = G(0.55, A_comp); var musicRev = G(0.5, A_rev);
+  A_sfx = G(1.0, A_comp); A_outLP = F('lowpass', 6000, 0.7, A_sfx);
   A_padG = G(0, A_music); A_padG.connect(musicRev);
-  A_padF = F('lowpass', 700, 0.8, A_padG);
-  O('sine', 0.09, G(140, A_padF.frequency));
-  for (i = 0; i < 8; i++) { var o = O('sawtooth', midiF(CHORDS[0][i >> 1]), G(0.072, P(i & 1 ? 0.35 : -0.35, A_padF))); o.detune.value = i & 1 ? 7 : -7; A_pad.push(o); }
-  // bass
+  A_padF = F('lowpass', 700, 0.8, A_padG); O('sine', 0.09, G(140, A_padF.frequency));
+  for (i = 0; i < 8; i++) { var o = O('sawtooth', midiF(CHORDS[0][i >> 1]), G(0.072, Pn(i & 1 ? 0.35 : -0.35, A_padF))); o.detune.value = i & 1 ? 7 : -7; A_pad.push(o); }
   A_bassG = G(0, G(0.3, A_music)); A_bass1 = O('sine', 55, A_bassG); A_bass2 = O('triangle', 110, G(0.3, A_bassG));
-  // arp
   A_arpG = G(0, G(1.25, A_music)); A_arpG.connect(G(0.7, musicRev));
   var af = F('lowpass', 2300, 1.0, A_arpG); A_arp1 = O('triangle', 440, af); A_arp2 = O('square', 440, G(0.16, af));
-  // two bell voices (inharmonic partials)
-  for (var j = 0; j < 2; j++) {
-    var bg = G(0, P(j ? 0.28 : -0.28, G(1.35, A_music))); bg.connect(G(0.9, musicRev));
-    A_bell.push({ g: bg, o1: O('sine', 440, bg), o2: O('sine', 1214, G(0.22, bg)), o3: O('sine', 2376, G(0.07, bg)) });
-  }
+  for (var j = 0; j < 2; j++) { var bg = G(0, Pn(j ? 0.28 : -0.28, G(1.35, A_music))); bg.connect(G(0.9, musicRev)); A_bell.push({ g: bg, o1: O('sine', 440, bg), o2: O('sine', 1214, G(0.22, bg)), o3: O('sine', 2376, G(0.07, bg)) }); }
   A_kickG = G(0, A_music); A_kick = O('sine', 60, A_kickG);
   A_boomG = G(0, A_music); A_boom = O('sine', 42, A_boomG);
   A_boomNG = G(0, A_music); noise().connect(F('lowpass', 280, 0.7, A_boomNG));
   A_rsG = G(0, A_music); A_rsG.connect(G(0.6, musicRev)); A_rsF = F('bandpass', 400, 2.2, A_rsG); noise().connect(A_rsF);
-  // outdoor SFX (muffled when the camera is underground)
+  // outdoor ambience (muffled when we are underground)
   A_windG = G(0, A_outLP); noise().connect(F('lowpass', 420, 0.5, A_windG));
-  A_mPan = P(0, A_outLP); A_mG = G(0, A_mPan);
+  A_crickG = G(0, A_outLP); O('sine', 4400, AM(31, AM(1.7, A_crickG)));
+  A_owlG = G(0, Pn(0.5, A_outLP)); A_owl = O('sine', 390, A_owlG);
+  A_barkG = G(0, Pn(-0.6, F('lowpass', 1000, 0.7, A_outLP))); A_barkF = F('bandpass', 650, 4, A_barkG); noise().connect(A_barkF); A_bark = O('sine', 500, G(0.5, A_barkG));
+  A_creakG = G(0, A_outLP); A_creak = O('sawtooth', 80, F('bandpass', 260, 8, A_creakG));
+  A_flutG = G(0, A_outLP); noise().connect(F('bandpass', 1600, 1, AM(16, A_flutG)));
+  A_mPan = Pn(0, A_outLP); A_mG = G(0, A_mPan);
   var mf = F('lowpass', 1300, 1.1, A_mG);
   A_m.push(O('sawtooth', 120, G(0.45, mf)), O('sawtooth', 121.6, G(0.45, mf)), O('square', 242, G(0.1, mf)), O('triangle', 361, G(0.14, mf)));
   A_mNG = G(0, A_mPan); A_mNF = F('bandpass', 1500, 0.9, A_mNG); noise().connect(A_mNF);
+  // distant artillery: low noise + sub, reaches us through the ground too
+  A_rumbG = G(0, A_sfx); noise().connect(F('lowpass', 140, 0.8, A_rumbG)); A_rsubG = G(0, A_sfx); A_rsub = O('sine', 36, A_rsubG);
   // foley
-  A_stPan = P(0, A_sfx);
-  A_stG = G(0, A_stPan); A_stF = F('bandpass', 800, 1.4, A_stG); noise().connect(A_stF);
+  A_stPan = Pn(0, A_sfx); A_stG = G(0, A_stPan); A_stF = F('bandpass', 800, 1.4, A_stG); noise().connect(A_stF);
   A_thG = G(0, A_stPan); A_th = O('sine', 90, A_thG);
   A_bpG = G(0, A_sfx); A_bp = O('sine', 1760, A_bpG);
   A_humG = G(0, A_sfx); O('sine', 100, A_humG); O('sine', 200, G(0.3, A_humG));
-  var rnF = F('highpass', 2600, 0.7, A_sfx);
-  A_rnG = G(0, rnF); A_rnBG = G(0, rnF); var rn = noise(); rn.connect(A_rnG); rn.connect(A_rnBG);
+  var rnF = F('highpass', 2600, 0.7, A_sfx); A_rnG = G(0, rnF); A_rnBG = G(0, rnF); var rn = noise(); rn.connect(A_rnG); rn.connect(A_rnBG);
   A_sqG = G(0, A_sfx); A_sqF = F('bandpass', 1900, 7, A_sqG); noise().connect(A_sqF);
-  // start in the exact state the loop ends in, so the audio seam is continuous
-  A_padG.gain.value = 0.55; A_padF.frequency.value = 700; A_outLP.frequency.value = 500;
-  A_windG.gain.value = 0.012; A_humG.gain.value = 0.012;
+  A_plkG = G(0, Pn(0.2, A_sfx)); A_plk = O('sine', 2000, A_plkG);
+  A_crkG = G(0, Pn(-0.5, A_sfx)); noise().connect(F('highpass', 3000, 0.7, A_crkG));
+  A_buzzG = G(0, Pn(-0.3, A_sfx)); O('square', 420, F('lowpass', 1800, 0.7, AM(25, A_buzzG)));
+  A_whG = G(0, A_sfx); A_whF = F('bandpass', 1200, 2, A_whG); noise().connect(A_whF);
+  A_padG.gain.value = 0.55; A_padF.frequency.value = 700; A_outLP.frequency.value = 600; A_windG.gain.value = 0.008; A_humG.gain.value = 0.012;
   audioOn = true;
 }
-
 function stepPan() { return clamp(((chX - camX) / W) * 2 - 1, -1, 1) * 0.6; }
 function sfxStep(wood) {
-  if (!audioOn || fpv) return;
-  var t = tnow();
-  A_stPan.pan.setValueAtTime(stepPan(), t);
-  A_stF.frequency.setValueAtTime(wood ? 520 : 1100, t); A_stF.Q.setValueAtTime(1.4, t);
-  hit(A_stG.gain, wood ? 0.32 : 0.24, t, 0.002, 0.02, wood ? 0.03 : 0.05);
-  if (wood) { A_th.frequency.setValueAtTime(118, t); hit(A_thG.gain, 0.32, t, 0.002, 0.01, 0.03); }
+  if (!audioOn || fpv) return; var t = tnow();
+  A_stPan.pan.setValueAtTime(stepPan(), t); A_stF.frequency.setValueAtTime(wood ? 520 : 1100, t); A_stF.Q.setValueAtTime(1.4, t);
+  hit(A_stG.gain, wood ? 0.3 : 0.22, t, 0.002, 0.02, wood ? 0.03 : 0.05);
+  if (wood) { A_th.frequency.setValueAtTime(118, t); hit(A_thG.gain, 0.28, t, 0.002, 0.01, 0.03); }
 }
-function sfxRustle() {
-  if (!audioOn) return; var t = tnow();
-  A_stPan.pan.setValueAtTime(stepPan(), t);
-  A_stF.frequency.setValueAtTime(2400, t); A_stF.Q.setValueAtTime(0.5, t);
-  hit(A_stG.gain, 0.12, t, 0.02, 0.12, 0.1);
-}
+function sfxRustle() { if (!audioOn) return; var t = tnow(); A_stPan.pan.setValueAtTime(stepPan(), t); A_stF.frequency.setValueAtTime(2400, t); A_stF.Q.setValueAtTime(0.5, t); hit(A_stG.gain, 0.12, t, 0.02, 0.12, 0.1); }
 function sfxThud(v) { if (!audioOn) return; var t = tnow(); A_th.frequency.setValueAtTime(70, t); hit(A_thG.gain, v, t, 0.003, 0.02, 0.08); }
 function sfxBeep(f, v) { if (!audioOn) return; var t = tnow(); A_bp.frequency.setValueAtTime(f, t); hit(A_bpG.gain, v, t, 0.002, 0.06, 0.02); }
 function sfxClick(f) { if (!audioOn) return; var t = tnow(); A_bp.frequency.setValueAtTime(f, t); hit(A_bpG.gain, 0.05, t, 0.001, 0.008, 0.008); sfxThud(0.12); }
+function sfxPower() { if (!audioOn) return; var t = tnow() + 0.12, f = [1320, 1760, 2349]; for (var i = 0; i < 3; i++) { A_bp.frequency.setValueAtTime(f[i], t + i * 0.11); hit(A_bpG.gain, 0.04, t + i * 0.11, 0.002, 0.05, 0.02); } }
 function sfxStatic(v) { if (!audioOn) return; hit(A_rnBG.gain, v, tnow(), 0.004, 0.2, 0.06); }
 function sfxLift() { if (!audioOn) return; hit(A_boomNG.gain, 0.5, tnow(), 0.01, 0.2, 0.35); }
-function sfxSquelch() {
-  if (!audioOn) return; var t = tnow();
-  A_sqF.frequency.setValueAtTime(1700, t); A_sqF.frequency.linearRampToValueAtTime(2300, t + 0.2);
-  hit(A_sqG.gain, 0.09, t, 0.004, 0.2, 0.04);
-}
+function sfxFlick() { if (!audioOn) return; var t = tnow(); A_whF.frequency.setValueAtTime(900, t); A_whF.frequency.exponentialRampToValueAtTime(3500, t + 0.25); hit(A_whG.gain, 0.12, t, 0.01, 0.15, 0.08); }
+function sfxSplash() { if (!audioOn) return; var t = tnow(); hit(A_crkG.gain, 0.12, t, 0.003, 0.05, 0.06); A_plk.frequency.setValueAtTime(1500, t); hit(A_plkG.gain, 0.06, t, 0.002, 0.02, 0.05); }
+function sfxBuzz() { if (!audioOn) return; hit(A_buzzG.gain, 0.05, tnow(), 0.01, 0.45, 0.03); }
+function sfxSquelch() { if (!audioOn) return; var t = tnow(); A_sqF.frequency.setValueAtTime(1700, t); A_sqF.frequency.linearRampToValueAtTime(2300, t + 0.2); hit(A_sqG.gain, 0.07, t, 0.004, 0.2, 0.04); }
 
-/* ---------------- Score ---------------- */
+/* ---------------- Score + timed ambience ---------------- */
 var CHORDS = [[50,57,62,65],[46,53,62,65],[53,57,60,65],[48,55,60,64],[43,55,58,62],[45,52,61,64],[50,57,62,66],[50,57,64,65]];
-var DM = 0, BB = 1, FF = 2, CC = 3, GM = 4, AA = 5, DMAJ = 6, DM9 = 7;
-var ROOT = [38, 34, 41, 36, 43, 33, 38, 38];
+var DM = 0, BB = 1, FF_ = 2, CC = 3, GM = 4, AA = 5, DMAJ = 6, DM9 = 7, ROOT = [38, 34, 41, 36, 43, 33, 38, 38];
 var EV_T, EV_Y, EV_A, EV_B, NEV = 0;
 function buildScore() {
-  var E = [], S = SEGSTART;
+  var E = [], k, q;
   function ev(t, type, a, b) { E.push([t, type, a, b || 0]); }
-  function chord(t, c, bassV) { ev(t, 1, c); if (bassV) ev(t, 4, ROOT[c], bassV); }
+  function chord(t, c, bv) { ev(t, 1, c); if (bv) ev(t, 4, ROOT[c], bv); }
   function bell(t, m, v) { ev(t, 6, m, v); }
-  // A — departure
-  chord(0, DM, 0.42); ev(0, 2, 0.55, 0.5); ev(0, 3, 700, 0.5);
-  bell(S[2], 69, 0.32); bell(S[2] + 0.5, 74, 0.28); bell(S[2] + 1.0, 77, 0.26);
-  chord(S[3], BB, 0.4); ev(S[3], 3, 1500, 1.6);
-  chord(S[4], FF, 0.42); ev(S[4], 2, 0.62, 1.0);
-  chord(S[5], CC, 0.4);
-  // B — deployment (motif on the unfolding clicks)
-  chord(S[7], DM, 0.45); bell(S[7], 69, 0.36); bell(S[7] + 0.6, 74, 0.32); bell(S[7] + 1.3, 77, 0.32); bell(S[8], 76, 0.28);
-  chord(S[10], BB, 0.4);
-  chord(S[11], FF, 0.38); ev(S[11], 3, 650, 1.8);
-  chord(S[12], GM, 0.4);
-  chord(S[14], AA, 0.42); ev(S[14], 2, 0.6, 0.6);
-  var k;
-  for (k = 0; k < 4; k++) { ev(S[15] + k, 7, 0.36); ev(S[15] + k + 0.2, 7, 0.22); }
-  // C — launch: riser and eighth-note pulse on A, exactly 10 eighths to lift-off
-  var L0 = S[17] + 2.5;
-  ev(S[17], 9, 2.5); ev(S[17], 3, 1300, 0.8);
+  chord(0, DM, 0); ev(0, 2, 0.55, 0.5); ev(0, 3, 700, 0.5); ev(S('KNEEL0'), 4, ROOT[DM], 0.38);
+  bell(S('INSERT'), 69, 0.32); bell(S('INSERT') + 0.9, 74, 0.28); bell(S('PROPS') + 0.39, 77, 0.26); bell(S('LIFT') + 0.32, 76, 0.24);
+  chord(S('TURN0'), BB, 0.4);
+  chord(S('CLIMB1'), FF_, 0.4); ev(S('CLIMB1'), 3, 1500, 1.6);
+  chord(S('WALK2'), CC, 0.42); ev(S('WALK2'), 2, 0.62, 1.0);
+  chord(S('UNFOLD'), DM, 0.45); bell(S('UNFOLD'), 69, 0.36); bell(S('UNFOLD') + 0.6, 74, 0.32); bell(S('UNFOLD') + 1.3, 77, 0.32); bell(S('RISE1'), 76, 0.28);
+  chord(S('WALK3'), BB, 0.4); chord(S('DESC1'), FF_, 0.38); ev(S('DESC1'), 3, 650, 1.8);
+  chord(S('WALK4'), GM, 0.4); chord(S('TAKECTRL'), AA, 0.42); ev(S('TAKECTRL'), 2, 0.6, 0.6);
+  for (k = 0; k < 4; k++) { ev(S('PREFLIGHT') + k, 7, 0.36); ev(S('PREFLIGHT') + k + 0.2, 7, 0.22); }
+  var L0 = S('MOTOR') + 2.5;
+  ev(S('MOTOR'), 9, 2.5); ev(S('MOTOR'), 3, 1300, 0.8);
   var AP = [57, 61, 64, 69, 64, 61, 57, 64];
-  for (k = 0; k < 10; k++) ev(S[17] + k * 0.25, 5, AP[k & 7] + (k >= 6 ? 12 : 0), 0.06 + k * 0.012);
+  for (k = 0; k < 10; k++) ev(S('MOTOR') + k * 0.25, 5, AP[k & 7] + (k >= 6 ? 12 : 0), 0.06 + k * 0.012);
   ev(L0, 8, 0.85); chord(L0, BB, 0.6); ev(L0, 3, 2600, 0.25); ev(L0, 2, 0.7, 0.3); bell(L0, 86, 0.22);
-  // D — flight: 7 bars of arpeggio, dominant A lands on the thermal cut
-  var PROG = [BB, FF, CC, DM, BB, FF, AA];
+  var PROG = [BB, FF_, CC, DM, BB, FF_, AA];
   for (var bar = 0; bar < 7; bar++) {
-    var tb = L0 + bar * 2, c = CHORDS[PROG[bar]];
+    var tb = L0 + bar * 2, c = CHORDS[PROG[bar]], inside = tb >= S('PANBACK');
     if (bar > 0) chord(tb, PROG[bar], 0.5);
-    var inside = tb >= S[20];
-    for (k = 0; k < 8; k++) {
-      var nn = c[1 + (k % 3)] + 12 + (k >= 4 ? (k === 7 ? 0 : 12) : 0);
-      ev(tb + k * 0.25, 5, (k & 1) ? c[1 + ((k + 1) % 3)] + 12 : nn, (inside ? 0.11 : 0.16) * (k === 0 ? 1.3 : 1));
-    }
+    for (k = 0; k < 8; k++) { var nn = c[1 + (k % 3)] + 12 + (k >= 4 ? (k === 7 ? 0 : 12) : 0); ev(tb + k * 0.25, 5, (k & 1) ? c[1 + ((k + 1) % 3)] + 12 : nn, (inside ? 0.11 : 0.16) * (k === 0 ? 1.3 : 1)); }
   }
-  // E — thermal feed: the pulse drops out, heartbeat and a dark pad
-  var F0 = S[23];
+  var F0 = S('FPV');
   ev(F0, 8, 0.7); chord(F0, DM, 0.5); ev(F0, 3, 420, 0.15); ev(F0, 2, 0.5, 0.3);
   for (k = 0; k < 7; k++) { ev(F0 + 0.375 + k * 0.75, 7, 0.42); ev(F0 + 0.55 + k * 0.75, 7, 0.26); }
   bell(F0 + 1.5, 86, 0.16); bell(F0 + 3.0, 84, 0.15); bell(F0 + 4.5, 81, 0.15);
-  // F — return: warmer quarter-note pulse, resolves to D major on touchdown
-  var R0 = S[24], TD = R0 + 7.0, RP = [FF, CC, BB, AA];
-  for (k = 0; k < 4; k++) {
-    var trb = R0 + k * 2; chord(trb, RP[k], 0.45);
-    var cc = CHORDS[RP[k]];
-    for (var q = 0; q < (k === 3 ? 2 : 4); q++) ev(trb + q * 0.5, 5, cc[1 + (q % 3)] + 12, 0.1);
-  }
+  var R0 = S('RETURN'), TD = R0 + 7.0, RP = [FF_, CC, BB, AA];
+  for (k = 0; k < 4; k++) { var trb = R0 + k * 2; chord(trb, RP[k], 0.45); var cc = CHORDS[RP[k]]; for (q = 0; q < (k === 3 ? 2 : 4); q++) ev(trb + q * 0.5, 5, cc[1 + (q % 3)] + 12, 0.1); }
   ev(R0, 3, 1800, 0.5); ev(R0, 2, 0.6, 0.5);
-  chord(TD, DMAJ, 0.55); bell(TD, 69, 0.34); bell(TD + 0.25, 74, 0.3); bell(TD + 0.5, 78, 0.3); bell(TD + 0.75, 81, 0.28);
-  ev(TD + 0.5, 3, 1200, 1.5);
-  ev(S[27], 2, 0.5, 1.2); ev(S[27], 3, 800, 1.2);
-  // G — fetching it back: calm reprise, motif on the folding clicks
-  chord(S[30], BB, 0.36);
-  chord(S[31], FF, 0.36); ev(S[31], 3, 1400, 1.6);
-  chord(S[32], CC, 0.36);
-  chord(S[34], DM, 0.4); bell(S[34], 69, 0.3); bell(S[34] + 0.56, 74, 0.28); bell(S[34] + 1.12, 77, 0.28); bell(S[35] + 0.32, 76, 0.24);
-  chord(S[38], BB, 0.36);
-  chord(S[39], GM, 0.36); ev(S[39], 3, 700, 1.8);
-  chord(S[40], AA, 0.36);
-  chord(S[41] + 0.6, DM9, 0.4); bell(S[41] + 0.6, 74, 0.24);
-  chord(S[42], DM, 0); ev(S[42], 2, 0.55, 0.8); ev(S[42], 3, 700, 0.8);
+  chord(TD, DMAJ, 0.55); bell(TD, 69, 0.34); bell(TD + 0.25, 74, 0.3); bell(TD + 0.5, 78, 0.3); bell(TD + 0.75, 81, 0.28); ev(TD + 0.5, 3, 1200, 1.5);
+  ev(S('PANIN'), 2, 0.5, 1.2); ev(S('PANIN'), 3, 800, 1.2);
+  chord(S('WALK5'), BB, 0.36); chord(S('CLIMB2'), FF_, 0.36); ev(S('CLIMB2'), 3, 1400, 1.6); chord(S('WALK6'), CC, 0.36);
+  chord(S('FOLD'), DM, 0.4); bell(S('FOLD'), 69, 0.3); bell(S('FOLD') + 0.56, 74, 0.28); bell(S('FOLD') + 1.12, 77, 0.28); bell(S('PICK') + 0.32, 76, 0.24);
+  chord(S('WALK7'), BB, 0.36); chord(S('DESC2'), GM, 0.36); ev(S('DESC2'), 3, 700, 1.8); chord(S('WALK8'), AA, 0.36);
+  chord(S('STOW') + 0.6, DM9, 0.4); bell(S('STOW') + 0.6, 74, 0.24); bell(S('PUTBAT') + 0.7, 69, 0.18);
+  chord(S('IDLE'), DM, 0); ev(S('IDLE'), 2, 0.55, 0.8); ev(S('IDLE'), 3, 700, 0.8);
+  // ambience on the loop clock
+  for (k = 0; k < ART.length; k++) { var rt = ART[k][0] + ART[k][2]; ev(rt % LOOPLEN, 10, 0.55 * 4.4 / ART[k][2]); if (ART[k][3]) ev((rt + 0.3) % LOOPLEN, 11, 0.12); }
+  var OWL = [18.5, 33.0, 66.5, 86.0, 112.0]; for (k = 0; k < OWL.length; k++) if (OWL[k] < LOOPLEN) ev(OWL[k], 12, 0.05);
+  var DOG = [12.0, 55.5, 99.0]; for (k = 0; k < DOG.length; k++) ev(DOG[k], 13, 0.05);
+  var CRK = [29.0, 72.5, 113.0]; for (k = 0; k < CRK.length; k++) if (CRK[k] < LOOPLEN) ev(CRK[k], 14, 0.035);
   E.sort(function (a, b) { return a[0] - b[0]; });
   NEV = E.length; EV_T = new Float64Array(NEV); EV_Y = new Uint8Array(NEV); EV_A = new Float32Array(NEV); EV_B = new Float32Array(NEV);
   for (var i = 0; i < NEV; i++) { EV_T[i] = E[i][0]; EV_Y[i] = E[i][1]; EV_A[i] = E[i][2]; EV_B[i] = E[i][3]; }
 }
 buildScore();
-
 function mEvent(type, a, b, t) {
   var i, f;
   switch (type) {
@@ -1289,29 +1607,25 @@ function mEvent(type, a, b, t) {
       hold(A_bassG.gain, t); A_bassG.gain.setTargetAtTime(b, t, 0.015); A_bassG.gain.setTargetAtTime(b * 0.55, t + 0.25, 0.5); A_bassG.gain.setTargetAtTime(0, t + 1.8, 0.7); break;
     case 5: f = midiF(a); A_arp1.frequency.setValueAtTime(f, t); A_arp2.frequency.setValueAtTime(f, t); hit(A_arpG.gain, b, t, 0.003, 0.04, 0.07); break;
     case 6: var B = A_bell[bellIdx]; bellIdx ^= 1; f = midiF(a);
-      B.o1.frequency.setValueAtTime(f, t); B.o2.frequency.setValueAtTime(f * 2.76, t); B.o3.frequency.setValueAtTime(f * 5.4, t);
-      hit(B.g.gain, b, t, 0.002, 0.012, 0.65); break;
+      B.o1.frequency.setValueAtTime(f, t); B.o2.frequency.setValueAtTime(f * 2.76, t); B.o3.frequency.setValueAtTime(f * 5.4, t); hit(B.g.gain, b, t, 0.002, 0.012, 0.65); break;
     case 7: A_kick.frequency.setValueAtTime(125, t); A_kick.frequency.exponentialRampToValueAtTime(44, t + 0.14); hit(A_kickG.gain, a, t, 0.002, 0.03, 0.08); break;
-    case 8: A_boom.frequency.setValueAtTime(72, t); A_boom.frequency.exponentialRampToValueAtTime(36, t + 0.7);
-      hit(A_boomG.gain, a, t, 0.003, 0.06, 0.55); hit(A_boomNG.gain, a * 0.6, t, 0.002, 0.03, 0.25); break;
-    case 9: A_rsF.frequency.setValueAtTime(300, t); A_rsF.frequency.exponentialRampToValueAtTime(3800, t + a);
-      hold(A_rsG.gain, t); A_rsG.gain.setTargetAtTime(0.13, t, a * 0.45); A_rsG.gain.setTargetAtTime(0, t + a, 0.03); break;
+    case 8: A_boom.frequency.setValueAtTime(72, t); A_boom.frequency.exponentialRampToValueAtTime(36, t + 0.7); hit(A_boomG.gain, a, t, 0.003, 0.06, 0.55); hit(A_boomNG.gain, a * 0.6, t, 0.002, 0.03, 0.25); break;
+    case 9: A_rsF.frequency.setValueAtTime(300, t); A_rsF.frequency.exponentialRampToValueAtTime(3800, t + a); hold(A_rsG.gain, t); A_rsG.gain.setTargetAtTime(0.13, t, a * 0.45); A_rsG.gain.setTargetAtTime(0, t + a, 0.03); break;
+    case 10: hit(A_rumbG.gain, a, t, 0.06, 0.3, 0.9); A_rsub.frequency.setValueAtTime(42, t); A_rsub.frequency.exponentialRampToValueAtTime(28, t + 1.5); hit(A_rsubG.gain, a * 0.8, t, 0.05, 0.2, 0.7); break;
+    case 11: hit(A_flutG.gain, a, t, 0.05, 0.9, 0.3); break;
+    case 12: for (i = 0; i < 3; i++) { var tt = t + (i === 0 ? 0 : 0.5 + i * 0.22); A_owl.frequency.setValueAtTime(410, tt); A_owl.frequency.linearRampToValueAtTime(365, tt + (i === 0 ? 0.42 : 0.16)); hit(A_owlG.gain, a, tt, 0.03, i === 0 ? 0.35 : 0.1, 0.06); } break;
+    case 13: for (i = 0; i < 2; i++) { var tb2 = t + i * 0.34; A_bark.frequency.setValueAtTime(540, tb2); A_bark.frequency.exponentialRampToValueAtTime(360, tb2 + 0.12); hit(A_barkG.gain, a, tb2, 0.006, 0.06, 0.05); } break;
+    case 14: A_creak.frequency.setValueAtTime(70, t); A_creak.frequency.linearRampToValueAtTime(95, t + 0.5); A_creak.frequency.linearRampToValueAtTime(78, t + 0.9); hit(A_creakG.gain, a, t, 0.15, 0.7, 0.2); break;
   }
 }
 function fireEvents(lo, hi, refL, base) {
-  for (var i = 0; i < NEV; i++) {
-    var et = EV_T[i];
-    if (et > lo && et <= hi) { var t = base - (refL - et); if (t < 0) t = 0; mEvent(EV_Y[i], EV_A[i], EV_B[i], t); }
-  }
+  for (var i = 0; i < NEV; i++) { var et = EV_T[i]; if (et > lo && et <= hi) { var t = base - (refL - et); if (t < 0) t = 0; mEvent(EV_Y[i], EV_A[i], EV_B[i], t); } }
 }
 function musicStateAt(L) {
   var t = tnow(), ch = -1, lv = -1, ct = -1;
   for (var i = 0; i < NEV; i++) { if (EV_T[i] > L) break; if (EV_Y[i] === 1) ch = i; else if (EV_Y[i] === 2) lv = i; else if (EV_Y[i] === 3) ct = i; }
-  if (ch >= 0) mEvent(1, EV_A[ch], 0, t);
-  if (lv >= 0) mEvent(2, EV_A[lv], 0.3, t);
-  if (ct >= 0) mEvent(3, EV_A[ct], 0.3, t);
+  if (ch >= 0) mEvent(1, EV_A[ch], 0, t); if (lv >= 0) mEvent(2, EV_A[lv], 0.3, t); if (ct >= 0) mEvent(3, EV_A[ct], 0.3, t);
 }
-
 var sqPrev = 0;
 function audioFrame() {
   if (!audioOn) return;
@@ -1319,45 +1633,40 @@ function audioFrame() {
   if (L >= prevL) fireEvents(prevL, L, L, base);
   else { fireEvents(prevL, LOOPLEN + 1, L + LOOPLEN, base); fireEvents(-1e-9, L, L, base); }
   prevL = L;
-  // radio squelch now and then while we are underground
-  var sq = Math.floor(L / 9.7);
-  if (sq !== sqPrev) { sqPrev = sq; if (camY > 24 && !fpv) sfxSquelch(); }
-  if (frame & 1) return;                                        // continuous mix at 30 Hz
-  var under = camY / (WH - H);
-  tgt(A_outLP.frequency, fpv ? 700 : 5800 - under * 5300, 0.15);
-  tgt(A_windG.gain, fpv ? 0.0 : 0.035 * (1 - under) + 0.006 + 0.012 * (0.5 + 0.5 * Math.sin(L * 0.37)), 0.4);
+  var under = (camMode === 1 || fpv) ? 0 : clamp((chY - 230) / 100, 0, 1);
+  var sq = Math.floor(L / 9.7); if (sq !== sqPrev) { sqPrev = sq; if (under > 0.6 && !fpv) sfxSquelch(); }
+  var dp = T % 2.3; if (prevDp < 0.41 && dp >= 0.41 && under > 0.2) { var t0 = tnow(); A_plk.frequency.setValueAtTime(2300, t0); A_plk.frequency.exponentialRampToValueAtTime(1700, t0 + 0.06); hit(A_plkG.gain, 0.05 * under, t0, 0.001, 0.01, 0.05); } prevDp = dp;
+  if (under > 0.3 && !fpv && hash(frame, 77) < 0.05) hit(A_crkG.gain, 0.025 * under, tnow(), 0.001, 0.004, 0.006);
+  if (frame & 1) return;
+  tgt(A_outLP.frequency, fpv ? 700 : 6000 - under * 5400, 0.15);
+  tgt(A_windG.gain, fpv ? 0 : 0.035 * (1 - under) + 0.006 + 0.012 * (0.5 + 0.5 * Math.sin(L * 0.37)), 0.4);
+  tgt(A_crickG.gain, fpv ? 0 : 0.011 * (1 - under * 0.8) * (0.6 + 0.4 * Math.sin(L * 0.2)), 0.5);
   tgt(A_humG.gain, fpv ? 0 : 0.012 * under, 0.3);
   var mv = 0;
-  if (dState === 5 && propSpd > 0.01) {
-    mv = propSpd * (dVis ? (0.25 + 0.75 * dS) : 0.05);
-    if (fpv) mv = 0.05 * propSpd;
-    if (Math.abs(camX + W / 2 - dX) > 110) mv *= 0.4;
-  }
-  var climb = (seg === 18 || seg === 19) ? 25 : 0, doppler = dVis ? (0.92 + 0.08 * dS) : 0.9;
-  var mf = (85 + 190 * propSpd + climb) * doppler;
+  if (dState === 5 && propSpd > 0.01) { mv = propSpd * (dVis ? (0.25 + 0.75 * dS) : 0.05); if (fpv) mv = 0.05 * propSpd; if (Math.abs(camX + W / 2 - dX) > 260) mv *= 0.4; }
+  var climb = (seg === K.TAKEOFF || seg === K.FLY) ? 25 : 0, doppler = dVis ? (0.92 + 0.08 * dS) : 0.9, mf = (85 + 190 * propSpd + climb) * doppler;
   tgt(A_m[0].frequency, mf, 0.1); tgt(A_m[1].frequency, mf * 1.013, 0.1); tgt(A_m[2].frequency, mf * 2.01, 0.1); tgt(A_m[3].frequency, mf * 3.02, 0.1);
   tgt(A_mG.gain, 0.1 * mv, 0.08); tgt(A_mNG.gain, 0.06 * mv, 0.08); tgt(A_mNF.frequency, 900 + 1400 * propSpd, 0.2);
   tgt(A_mPan.pan, dVis ? clamp(((dX - camX) / W) * 2 - 1, -1, 1) * 0.7 : 0, 0.1);
   tgt(A_rnG.gain, fpv ? 0.014 : 0.0, 0.08);
 }
 
-/* ---------------- Display + loop ---------------- */
+/* =====================================================================
+   DISPLAY + LOOP + EXPORT HOOKS
+   ===================================================================== */
 var scale = 1, ox = 0, oy = 0;
 function resize() {
   var dpr = window.devicePixelRatio || 1;
-  var cw = Math.max(1, Math.floor(window.innerWidth * dpr)), ch = Math.max(1, Math.floor(window.innerHeight * dpr));
-  disp.width = cw; disp.height = ch;
-  scale = Math.max(1, Math.floor(Math.min(cw / W, ch / H)));
-  ox = Math.floor((cw - W * scale) / 2); oy = Math.floor((ch - H * scale) / 2);
-  dctx.imageSmoothingEnabled = false;
-  dctx.fillStyle = PAL[BLK]; dctx.fillRect(0, 0, cw, ch);
+  var cw = Math.max(1, Math.floor(window.innerWidth * dpr)), chh = Math.max(1, Math.floor(window.innerHeight * dpr));
+  disp.width = cw; disp.height = chh;
+  scale = Math.max(1, Math.floor(Math.min(cw / W, chh / H)));
+  ox = Math.floor((cw - W * scale) / 2); oy = Math.floor((chh - H * scale) / 2);
+  dctx.imageSmoothingEnabled = false; dctx.fillStyle = PAL[BLK]; dctx.fillRect(0, 0, cw, chh);
 }
 window.addEventListener('resize', resize);
 resize();
-
-segStart(0);
-if (location.hash === '#capture') {
-  // frame-exact export: video frame i == audio time i/60
+opBuf = new CharBuf(); ptBuf = new CharBuf();
+if (CAPTURE) {
   window.__frames = Math.round(LOOPLEN * 60);
   window.__step = function () { update(); render(); };
   window.__renderAudio = function () {
@@ -1366,20 +1675,15 @@ if (location.hash === '#capture') {
     buildAudio(oc, true);
     for (var k = 0; k < N; k++) { offT = k / 60; update(); audioFrame(); }
     return oc.startRendering().then(function (buf) {
-      var n = buf.length, l = buf.getChannelData(0), r = buf.getChannelData(1), peak = 0, sum = 0;
-      for (var i = 0; i < n; i++) { var a = Math.abs(l[i]), b = Math.abs(r[i]); if (a > peak) peak = a; if (b > peak) peak = b; sum += l[i] * l[i] + r[i] * r[i]; }
-      var gain = peak > 0.97 ? 0.97 / peak : 1;
-      var bytes = new Uint8Array(44 + n * 4), dv = new DataView(bytes.buffer);
+      var n = buf.length, l = buf.getChannelData(0), r = buf.getChannelData(1), peak = 0, sum = 0, i;
+      for (i = 0; i < n; i++) { var a = Math.abs(l[i]), b = Math.abs(r[i]); if (a > peak) peak = a; if (b > peak) peak = b; sum += l[i] * l[i] + r[i] * r[i]; }
+      var gain = peak > 0.97 ? 0.97 / peak : 1, bytes = new Uint8Array(44 + n * 4), dv = new DataView(bytes.buffer);
       function str(o, s) { for (var j = 0; j < s.length; j++) bytes[o + j] = s.charCodeAt(j); }
-      str(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); str(8, 'WAVE'); str(12, 'fmt ');
-      dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true); dv.setUint32(24, sr, true);
-      dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, n * 4, true);
-      for (i = 0; i < n; i++) {
-        dv.setInt16(44 + i * 4, Math.round(clamp(l[i] * gain, -1, 1) * 32767), true);
-        dv.setInt16(46 + i * 4, Math.round(clamp(r[i] * gain, -1, 1) * 32767), true);
-      }
+      str(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); str(8, 'WAVE'); str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+      dv.setUint32(24, sr, true); dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, n * 4, true);
+      for (i = 0; i < n; i++) { dv.setInt16(44 + i * 4, Math.round(clamp(l[i] * gain, -1, 1) * 32767), true); dv.setInt16(46 + i * 4, Math.round(clamp(r[i] * gain, -1, 1) * 32767), true); }
       window.__wav = bytes;
-      return { samples: n, peak: peak, rms: Math.sqrt(sum / (2 * n)), gain: gain };
+      return { samples: n, peak: peak, rms: Math.sqrt(sum / (2 * n)), gain: gain, loop: LOOPLEN };
     });
   };
   window.__wavChunk = function (o, len) {
@@ -1389,23 +1693,14 @@ if (location.hash === '#capture') {
   };
 } else {
   update(); render();
-  // sound needs one user gesture (browser autoplay policy); no visible controls
-  var startAudio = function () {
-    if (audioOn) return;
-    var Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return;
-    buildAudio(new Ctx(), false); prevL = loopTime(); musicStateAt(prevL);
-  };
-  window.addEventListener('pointerdown', startAudio);
-  window.addEventListener('keydown', startAudio);
+  var startAudio = function () { if (audioOn) return; var Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return; buildAudio(new Ctx(), false); prevL = loopTime(); musicStateAt(prevL); };
+  window.addEventListener('pointerdown', startAudio); window.addEventListener('keydown', startAudio);
   var last = -1, acc = 0, STEP_MS = 1000 / 60;
   var loop = function (ts) {
     if (last < 0) last = ts;
     var dt = ts - last; last = ts; if (dt > 250) dt = 250;
-    acc += dt;
-    while (acc >= STEP_MS) { update(); acc -= STEP_MS; }
-    render();
-    audioFrame();
-    requestAnimationFrame(loop);
+    acc += dt; while (acc >= STEP_MS) { update(); acc -= STEP_MS; }
+    render(); audioFrame(); requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
 }
