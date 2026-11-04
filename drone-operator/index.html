@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Night Launch</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #08080a; overflow: hidden; }
+  canvas {
+    display: block; position: fixed; left: 0; top: 0;
+    width: 100vw; height: 100vh;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+'use strict';
+
+/* =====================================================================
+   NIGHT LAUNCH — procedural 128x96 pixel-art scene
+   Offscreen logical canvas -> integer-scaled fullscreen blit.
+   ===================================================================== */
+
+var W = 128, H = 96, M = 1;          // logical size + 1px margin for camera shake
+
+/* ---------------- Palette (every pixel comes from here) ---------------- */
+var PAL = [
+  '#060915', // 0  SKY0   deep midnight
+  '#0b1226', // 1  SKY1
+  '#121b36', // 2  SKY2
+  '#1b2647', // 3  SKY3   horizon haze / cloud body
+  '#34416a', // 4  CLDL   moonlit cloud edge / dim star
+  '#e2e6d2', // 5  MOON   moon / bright star
+  '#a1aa96', // 6  MOONS  moon shading
+  '#050b0f', // 7  TREE   treeline silhouette
+  '#0e1719', // 8  HILL   far hills
+  '#121510', // 9  GND0   dark ground / shadow
+  '#1c1e16', // 10 GND1   field
+  '#2e2c1f', // 11 GND2   dirt highlight
+  '#1b2d17', // 12 GRS0   grass dark
+  '#2f4622', // 13 GRS1   grass light
+  '#252b19', // 14 OL0    uniform dark
+  '#3c4527', // 15 OL1    uniform mid
+  '#586039', // 16 OL2    uniform light
+  '#7a7150', // 17 KHA    khaki highlight
+  '#4b4731', // 18 KHD    khaki / plate carrier
+  '#2c2116', // 19 BRN0   boots / straps
+  '#08080a', // 20 BLK
+  '#1e2125', // 21 GR0
+  '#373b41', // 22 GR1
+  '#60666e', // 23 GR2
+  '#8095bb', // 24 RIM    moonlight rim
+  '#8c6a50', // 25 SKIN
+  '#2b5d3b', // 26 GLW0   controller glow dim
+  '#7be596', // 27 GLW1   controller screen bright
+  '#ea3328', // 28 RED
+  '#561916', // 29 REDD   red halo
+  '#3fe266', // 30 GRN
+  '#194523', // 31 GRND   green halo
+  '#f2f3ec', // 32 WHT
+  '#2d52b8', // 33 BLU
+  '#6b6352'  // 34 DST0   light dust
+];
+var SKY0=0,SKY1=1,SKY2=2,SKY3=3,CLDL=4,MOON=5,MOONS=6,TREE=7,HILL=8,GND0=9,GND1=10,GND2=11,
+    GRS0=12,GRS1=13,OL0=14,OL1=15,OL2=16,KHA=17,KHD=18,BRN0=19,BLK=20,GR0=21,GR1=22,GR2=23,
+    RIM=24,SKIN=25,GLW0=26,GLW1=27,RED=28,REDD=29,GRN=30,GRND=31,WHT=32,BLU=33,DST0=34;
+
+/* ---------------- Canvases ---------------- */
+var disp = document.getElementById('c');
+var dctx = disp.getContext('2d', { alpha: false });
+var off = document.createElement('canvas'); off.width = W + 2*M; off.height = H + 2*M;
+var octx = off.getContext('2d');
+var bg = document.createElement('canvas'); bg.width = W + 2*M; bg.height = H + 2*M;
+var bctx = bg.getContext('2d');
+octx.imageSmoothingEnabled = false; bctx.imageSmoothingEnabled = false;
+
+var g = bctx; // current drawing context
+var FORCE = -1; // when >= 0, every primitive draws in this color (outline pass)
+function rect(x, y, w, h, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, w, h); }
+function px(x, y, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, 1, 1); }
+function lineP(x0, y0, x1, y1, c) {
+  var dx = x1 - x0, dy = y1 - y0;
+  var n = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+  g.fillStyle = PAL[c];
+  if (n === 0) { g.fillRect(x0, y0, 1, 1); return; }
+  for (var i = 0; i <= n; i++) g.fillRect(x0 + Math.round(dx * i / n), y0 + Math.round(dy * i / n), 1, 1);
+}
+
+/* ---------------- Deterministic RNG / hash ---------------- */
+var seed = 0x2f6b9e31 | 0;
+function rnd() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; }
+function hash(x, y) {
+  var h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function ease(u) { return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u); }
+
+/* =====================================================================
+   SPRITE PARTS — pixel-run maps compiled once into a flat Int16Array
+   ===================================================================== */
+var CH = { K:BLK, '0':OL0, '1':OL1, '2':OL2, v:KHD, V:KHA, d:BRN0, g:GR0, G:GR1, H:GR2,
+           m:RIM, s:SKIN, w:WHT, u:BLU, r:RED };
+
+// Head: helmet with fabric cover, NVG mount, headset, balaclava (faces right)
+var HEAD = [
+  "...mm22...",
+  "..m2112122",
+  ".m21112111",
+  ".m112111GG",
+  "m11111111G",
+  "m001111110",
+  ".K0000000K",
+  ".GGgggssss",
+  ".GHggggggg",
+  "..Gggggggg",
+  "...ggggg.."
+];
+// Torso: shoulders, plate carrier, mag pouches, backpack straps, belt, hips
+var TORSO = [
+  "...mm111112...",
+  "..m1d1111111d.",
+  "..m1dvvvvvvvd.",
+  ".m11vVVVVVVVv.",
+  ".m01vdvdvdvdv.",
+  ".001vvvvvvvvv.",
+  ".001vVVdVVdVV.",
+  ".000vvvdvvdvv.",
+  ".000vvvdvvdvv.",
+  "..00vvvvvvvvv.",
+  "..0KKKKVKKKKK.",
+  "..011101110110"
+];
+// Leg with knee pad and combat boot
+var LEG = [
+  "1111.",
+  "1111.",
+  "1111.",
+  "1111.",
+  "GHG1.",
+  "1111.",
+  "1111.",
+  "0111.",
+  "dvdd.",
+  "ddddd",
+  "KKKKK"
+];
+// Small assault pack
+var PACK = [
+  ".0000.",
+  "m11110",
+  "m12110",
+  "011110",
+  "0vvvv0",
+  "0vVVv0",
+  "0vvvv0",
+  "011110",
+  ".0000."
+];
+// Near upper arm with tricolor sleeve patch
+var ARM = [
+  "221",
+  "ww1",
+  "uu1",
+  "rr1",
+  "110",
+  "101",
+  "110"
+];
+
+var RUNS = [];
+function buildPart(rows, camo, cox, coy) {
+  var start = RUNS.length / 4;
+  for (var y = 0; y < rows.length; y++) {
+    var row = rows[y], prev = -1, rs = 0;
+    for (var x = 0; x <= row.length; x++) {
+      var c = -1;
+      if (x < row.length) {
+        var ch = row[x];
+        if (ch !== '.') {
+          c = CH[ch];
+          if (camo && c === OL1) {               // pixelated "digital flora" camo blocks
+            var n = hash((x + cox) >> 1, (y + coy) >> 1);
+            if (n < 0.3) c = OL0; else if (n > 0.86) c = OL2;
+          }
+        }
+      }
+      if (c !== prev) { if (prev >= 0) RUNS.push(rs, y, x - rs, prev); prev = c; rs = x; }
+    }
+  }
+  return { o: start, n: RUNS.length / 4 - start };
+}
+var P_HEAD  = buildPart(HEAD, true, 8, 0);
+var P_TORSO = buildPart(TORSO, true, 5, 10);
+var P_LEG   = buildPart(LEG, true, 12, 21);
+var P_LEGB  = buildPart(LEG, true, 3, 21);
+var P_PACK  = buildPart(PACK, true, 1, 11);
+var P_ARM   = buildPart(ARM, true, 15, 11);
+var RUNA = new Int16Array(RUNS); RUNS = null;
+
+var DARK = new Uint8Array(PAL.length);
+for (var i0 = 0; i0 < PAL.length; i0++) DARK[i0] = i0;
+DARK[OL0]=GND0; DARK[OL1]=OL0; DARK[OL2]=OL1; DARK[GR1]=GR0; DARK[GR2]=GR1; DARK[BRN0]=BLK; DARK[KHD]=OL0; DARK[RIM]=OL1;
+
+function drawPart(p, x, y, dark, maxRow) {
+  for (var i = p.o, e = p.o + p.n; i < e; i++) {
+    var k = i << 2;
+    if (RUNA[k + 1] >= maxRow) continue;
+    var c = RUNA[k + 3]; if (dark) c = DARK[c]; if (FORCE >= 0) c = FORCE;
+    g.fillStyle = PAL[c];
+    g.fillRect(x + RUNA[k], y + RUNA[k + 1], RUNA[k + 2], 1);
+  }
+}
+
+/* =====================================================================
+   STATIC BACKGROUND (rendered once)
+   ===================================================================== */
+var BAYER = [0, 2, 3, 1];
+var BAYER4 = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
+function farY(x)  { return 59 + Math.round(2.5 * Math.sin(x * 0.045 + 0.5) + 1.5 * Math.sin(x * 0.11 + 2.0)); }
+function nearY(x) { return 65 + Math.round(2.0 * Math.sin(x * 0.032 + 1.3) + 1.2 * Math.sin(x * 0.09 + 0.4)); }
+var MOX = 22, MOY = 15, MOR = 7;
+var GX = 90, GY = 85;                 // drone rest position (body center)
+var CX = 33, CY = 56;                 // soldier sprite origin (24x32 box), feet at y=87
+
+function vnoise(x, y) {            // smooth value noise, 10x5 cells
+  var fx = x / 10, fy = y / 5, ix = Math.floor(fx), iy = Math.floor(fy);
+  var ux = ease(fx - ix), uy = ease(fy - iy);
+  var a = hash(ix, iy + 500), b = hash(ix + 1, iy + 500), c = hash(ix, iy + 501), d = hash(ix + 1, iy + 501);
+  return (a + (b - a) * ux) * (1 - uy) + (c + (d - c) * ux) * uy;
+}
+function genBG() {
+  g = bctx; g.setTransform(1, 0, 0, 1, M, M);
+  var x, y;
+  // Sky with ordered-dither banding
+  for (y = -M; y < H + M; y++) for (x = -M; x < W + M; x++) {
+    var b = BAYER4[((y & 3) << 2) | (x & 3)];
+    var yy = y + (b - 7.5) * 0.42;
+    px(x, y, yy < 17 ? SKY0 : yy < 33 ? SKY1 : yy < 47 ? SKY2 : SKY3);
+  }
+  // Moon (gibbous, lit from left) with craters
+  for (y = -MOR - 1; y <= MOR + 1; y++) for (x = -MOR - 1; x <= MOR + 1; x++) {
+    var d2 = x * x + y * y;
+    if (d2 > MOR * MOR + MOR * 0.6) continue;
+    var sx = x - 9, sh = sx * sx + y * y < 8.2 * 8.2;
+    var c = MOON;
+    if (sh) c = SKY3;
+    else if ((x - 8) * (x - 8) + y * y < 9.4 * 9.4) c = MOONS;
+    px(MOX + x, MOY + y, c);
+  }
+  px(MOX-3,MOY-3,MOONS); px(MOX-2,MOY-3,MOONS); px(MOX-4,MOY+1,MOONS); px(MOX-1,MOY+2,MOONS);
+  px(MOX-2,MOY+2,MOONS); px(MOX-5,MOY-1,MOONS); px(MOX,MOY-5,MOONS); px(MOX-6,MOY+3,CLDL);
+  px(MOX-5,MOY-5,WHT); px(MOX-6,MOY-3,WHT);
+  // Thin cloud streaks (one drifts across the moon)
+  var CL = [[4,19,30],[10,21,20],[-1,23,14],[58,11,28],[76,13,16],[30,35,24],[88,29,22],[104,41,18]];
+  for (var ci = 0; ci < CL.length; ci++) {
+    var cx = CL[ci][0], cy = CL[ci][1], cl = CL[ci][2];
+    rect(cx + 2, cy, cl - 4, 1, SKY3);
+    rect(cx + 6, cy - 1, cl - 13, 1, SKY3);
+    px(cx, cy, SKY2); px(cx + 1, cy, SKY3); px(cx + cl - 2, cy, SKY3);
+    if (cx < 48) for (x = cx + 6; x < cx + cl - 7; x++) if (hash(x, cy) < 0.55) px(x, cy - 1, CLDL);
+  }
+  // Far hills
+  for (x = -M; x < W + M; x++) { var fy = farY(x); rect(x, fy, 1, 80 - fy, HILL); }
+  // Treeline (conifers + broadleaf clumps), gap for distant vehicle
+  seed = 0x51ed27 | 0;
+  x = -1;
+  while (x < W + 2) {
+    if (x > 96 && x < 115) { x += 2; continue; }
+    var base = farY(x) + 1;
+    if (rnd() < 0.72) {
+      var th = 4 + ((rnd() * 7) | 0);
+      for (var r = 0; r < th; r++) {
+        var half = (r * 0.42) | 0; if (r % 3 === 2 && half > 0) half -= 1;
+        rect(x - half, base - th + r, half * 2 + 1, 1, TREE);
+      }
+      rect(x, base - 1, 1, 3, TREE);
+    } else {
+      var br = 2 + ((rnd() * 3) | 0);
+      for (y = -br; y <= br; y++) for (var bx = -br - 1; bx <= br + 1; bx++)
+        if (bx * bx * 0.7 + y * y <= br * br + 0.5 && hash(x + bx, y + 40) > 0.08) px(x + bx, base - br + y, TREE);
+    }
+    x += 2 + ((rnd() * 4) | 0);
+  }
+  // Distant field vehicle (extremely subtle)
+  var vy = farY(105) - 1;
+  rect(101, vy - 3, 3, 3, TREE); rect(104, vy - 4, 7, 4, TREE); px(103, vy - 2, TREE);
+  rect(107, vy - 9, 1, 5, HILL); px(102, vy - 3, SKY3); px(105, vy - 4, SKY3);
+  px(102, vy, HILL); px(106, vy, HILL); px(109, vy, HILL);
+  // Near rolling terrain + field
+  for (x = -M; x < W + M; x++) {
+    var ny = nearY(x);
+    for (y = ny; y < H + M; y++) {
+      var bb = BAYER[((y & 1) << 1) | (x & 1)];
+      var col;
+      if (y === ny) col = (x < 70 && hash(x, 7) < 0.6) ? GND1 : GND0;
+      else if (y < 70) col = (y - ny + bb * 0.9 > 4.2) ? GND1 : GND0;
+      else {
+        col = GND1;
+        var n = vnoise(x, y) + (BAYER4[((y & 3) << 2) | (x & 3)] - 7.5) * 0.012, n2 = hash(x, y);
+        if (n < 0.3) col = GND0;
+        else if (y > 74 && n > 0.72) col = GND2;
+        if (n2 < 0.012) col = GND2; else if (n2 > 0.99) col = GND0;
+      }
+      px(x, y, col);
+    }
+  }
+  // Cleared launch spot
+  for (y = -3; y <= 3; y++) for (x = -13; x <= 13; x++) {
+    var e2 = (x * x) / 169 + (y * y) / 7.5;
+    if (e2 > 1) continue;
+    if (e2 > 0.7 && BAYER[((y & 1) << 1) | (x & 1)] < 2) continue;
+    px(GX + x, 88 + y, hash(x + 99, y) < 0.08 ? DST0 : GND2);
+  }
+  // Static grass
+  seed = 0x77aa13 | 0;
+  for (var t = 0; t < 60; t++) {
+    x = (rnd() * 130 - 1) | 0; y = 68 + ((rnd() * 28) | 0);
+    var ex = (x - GX) / 14, ey = (y - 88) / 4; if (ex * ex + ey * ey < 1.2) continue;
+    var hh = 1 + (((y - 66) / 11) | 0);
+    for (var k = -1; k <= 1; k++) {
+      if (rnd() < 0.35) continue;
+      var bh = hh - (k !== 0 ? 1 : 0); if (bh < 1) bh = 1;
+      rect(x + k, y - bh + 1, 1, bh, GRS0);
+      if (y > 82 && rnd() < 0.6) px(x + k, y - bh + 1, GRS1);
+    }
+  }
+  // Rocks with a moonlit top-left pixel
+  var RK = [[14,90,5],[58,93,3],[106,91,5],[119,80,3],[6,78,2],[70,95,2],[40,74,2],[96,73,2]];
+  for (var ri = 0; ri < RK.length; ri++) {
+    var rx = RK[ri][0], ry = RK[ri][1], rw = RK[ri][2];
+    rect(rx, ry, rw, 2, GR0); rect(rx, ry + 1, rw, 1, BLK);
+    if (rw > 2) { rect(rx + 1, ry - 1, rw - 2, 1, GR0); px(rx + 1, ry - 1, GR1); px(rx + 1, ry - 1, rw > 3 ? RIM : GR1); px(rx + 2, ry - 1, GR1); }
+    else px(rx, ry, GR1);
+    rect(rx + rw, ry + 1, 2, 1, GND0);
+  }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+genBG();
+
+/* ---------------- Stars (only where the background is open sky) ---------------- */
+var NS = 34;
+var sX = new Int16Array(NS), sY = new Int16Array(NS), sB = new Uint8Array(NS);
+var sPh = new Float32Array(NS), sSp = new Float32Array(NS);
+(function () {
+  var data = bctx.getImageData(0, 0, W + 2 * M, H + 2 * M).data;
+  function hex(c) { return [parseInt(PAL[c].substr(1, 2), 16), parseInt(PAL[c].substr(3, 2), 16), parseInt(PAL[c].substr(5, 2), 16)]; }
+  var ok = [hex(SKY0), hex(SKY1), hex(SKY2)];
+  function isSky(x, y) {
+    var i = ((y + M) * (W + 2 * M) + (x + M)) * 4;
+    for (var k = 0; k < 3; k++) if (data[i] === ok[k][0] && data[i + 1] === ok[k][1] && data[i + 2] === ok[k][2]) return true;
+    return false;
+  }
+  seed = 0x13579b | 0;
+  var n = 0, guard = 0;
+  while (n < NS && guard++ < 5000) {
+    var x = (rnd() * W) | 0, y = (rnd() * 46) | 0;
+    var dx = x - MOX, dy = y - MOY; if (dx * dx + dy * dy < 140) continue;
+    if (!isSky(x, y) || !isSky(x + 1, y) || !isSky(x - 1, y)) continue;
+    sX[n] = x; sY[n] = y; sB[n] = rnd() < 0.35 ? 1 : 0;
+    sPh[n] = rnd() * 6.283; sSp[n] = 0.6 + rnd() * 2.2; n++;
+  }
+})();
+
+/* ---------------- Foreground grass tufts (sway + rotor wash) ---------------- */
+var TUFT = [70,89, 78,90, 82,86, 101,86, 105,90, 113,92, 20,92, 30,95, 56,94, 64,90, 119,94, 92,94, 10,88, 124,88, 74,84];
+var NT = TUFT.length / 2;
+var tX = new Int16Array(NT), tY = new Int16Array(NT);
+for (var ti = 0; ti < NT; ti++) { tX[ti] = TUFT[ti * 2]; tY[ti] = TUFT[ti * 2 + 1]; }
+
+/* =====================================================================
+   PARTICLES — preallocated pool, no allocation at runtime
+   type 0 dust, 2 ambient mote, 3 red spark, 4 green spark, 5 white spark
+   ===================================================================== */
+var NP = 128;
+var pX = new Float32Array(NP), pY = new Float32Array(NP), pVX = new Float32Array(NP), pVY = new Float32Array(NP);
+var pL = new Float32Array(NP), pML = new Float32Array(NP);
+var pT = new Uint8Array(NP), pA = new Uint8Array(NP);
+var pNext = 0;
+function spawn(t, x, y, vx, vy, life) {
+  for (var k = 0; k < NP; k++) {
+    var i = pNext + k; if (i >= NP) i -= NP;
+    if (!pA[i]) {
+      pA[i] = 1; pT[i] = t; pX[i] = x; pY[i] = y; pVX[i] = vx; pVY[i] = vy; pL[i] = life; pML[i] = life;
+      pNext = i + 1; if (pNext >= NP) pNext = 0;
+      return;
+    }
+  }
+}
+function dustBurst(n, power) {
+  for (var k = 0; k < n; k++) {
+    var side = rnd() < 0.5 ? -1 : 1;
+    spawn(0, GX + side * (1 + rnd() * 5), 87 + rnd() * 1.5, side * (10 + rnd() * 18) * power, -(1 + rnd() * 5), 0.6 + rnd() * 0.7);
+  }
+}
+
+/* =====================================================================
+   STATE MACHINE
+   ===================================================================== */
+var S_IDLE=0, S_PREP=1, S_MOTOR=2, S_TAKE=3, S_FLY=4, S_OPER=5, S_RET=6, S_LAND=7, S_SPIN=8;
+var DUR = new Float32Array([3.4, 2.6, 2.2, 2.4, 5.2, 3.0, 4.6, 2.6, 2.4]);
+var STEP = 1 / 60;
+var state = S_IDLE, st = 0, T = 0, frame = 0;
+
+// drone
+var dX = GX, dY = GY, dS = 1, dTilt = 0, dVis = 1, dAlt = 0, vibX = 0, vibY = 0, shake = 0;
+var propSpd = 0, propPh = 0, lights = 0, navOn = 0, strobe = 0;
+var lrX = 0, lrY = 0, lgX = 0, lgY = 0, dLevel = 0;
+// soldier: continuous params...
+var headS = 0, glowS = 0.4, ctrlS = 0, act = 0;
+// ...and quantized pose snapshot (updated at 10 fps)
+var poseTick = 0, pBreath = 0, pWeight = 0, pHead = 0, pGlow = 0, pCtrl = 0, pThL = 0, pThR = 0;
+var packX = 0, packY = 0, pAnt = 0, lagW = 0, lagT = 0, lastB = 0;
+
+function update() {
+  T += STEP; st += STEP; frame++;
+  if (st >= DUR[state]) { st -= DUR[state]; state = state + 1; if (state > S_SPIN) state = S_IDLE; }
+
+  var propT = 0, headT = 0, glowT = 0.4, ctrlT = 0, xy = 0, u, e;
+  act = 0; lights = 0; dVis = 1; dTilt = 0; dS = 1; dX = GX; dAlt = 0; vibX = 0; vibY = 0; shake = 0;
+
+  switch (state) {
+    case S_IDLE:
+      headT = (st > 1.5 && st < 2.4) ? -1 : 0;           // brief glance at controller
+      break;
+    case S_PREP:
+      headT = st < 2.0 ? -1 : 0; glowT = st < 0.5 ? 0.4 : 2; ctrlT = st < 2.0 ? -1 : 0;
+      act = (st > 0.4 && st < 2.1) ? 1 : 0; lights = st > 0.9 ? 1 : 0; propT = st > 1.5 ? 0.16 : 0;
+      break;
+    case S_MOTOR:
+      propT = 1; glowT = 1.2; act = 0.6; lights = 1;
+      if (propSpd > 0.15) { vibY = ((frame * 5) % 7 < 2) ? -1 : 0; vibX = ((frame * 3) % 11 === 0) ? 1 : 0; }
+      break;
+    case S_TAKE:
+      propT = 1; glowT = 1; act = 0.6; lights = 1;
+      if (st < 0.25) { vibY = ((frame * 5) % 7 < 2) ? -1 : 0; }
+      else dAlt = 24 * ease((st - 0.25) / 2.0);
+      if (st > 0.25 && st < 0.6) shake = (frame >> 1) & 1;
+      if (st >= 0.25 && st - STEP < 0.25) dustBurst(10, 1);
+      headT = dAlt > 9 ? 1 : 0;
+      break;
+    case S_FLY:
+      propT = 1; lights = 1; glowT = 1; act = 0.6; headT = 1;
+      if (st < 0.9) { dAlt = 24 + (Math.sin(st * 5) > 0.55 ? 1 : 0); }
+      else if (st < 1.4) { dAlt = 24; dTilt = 1; dX = GX + Math.round((st - 0.9) * 4); }
+      else {
+        u = (st - 1.4) / 3.8; e = ease(u); xy = 1;
+        dX = GX + 2 + 24 * e; dY = GY - 24 - 56 * e;
+        dS = 1 - 0.92 * Math.pow(e, 0.6); dTilt = e < 0.9 ? 1 : 0;
+        if (u >= 1) dVis = 0;
+      }
+      break;
+    case S_OPER:
+      dVis = 0; headT = -1; glowT = 2; ctrlT = -1; act = 1; propT = 1; lights = 1;
+      break;
+    case S_RET:
+      u = st / DUR[S_RET]; e = 1 - (1 - u) * (1 - u) * (1 - u); xy = 1;
+      dX = 100 + (GX - 100) * e - 14 * Math.sin(e * Math.PI);
+      dY = 4 + (GY - 20 - 4) * e;
+      dS = 0.08 + 0.92 * Math.pow(e, 2.2); dTilt = e < 0.8 ? -1 : 0;
+      headT = st < 0.6 ? -1 : 1; glowT = 1; act = 0.7; lights = 1; propT = 1;
+      break;
+    case S_LAND:
+      dAlt = st < 0.5 ? 20 : 20 * (1 - ease((st - 0.5) / 2.0));
+      headT = dAlt > 8 ? 1 : 0; propT = 1; lights = 1; glowT = 1; act = 0.7;
+      if (st >= 2.5 && st - STEP < 2.5) dustBurst(6, 0.6);
+      break;
+    case S_SPIN:
+      propT = 0; lights = st < 1.8 ? 1 : 0; headT = st < 1.5 ? -1 : 0;
+      glowT = st < 1.5 ? 1.6 : 0.4; ctrlT = st < 1.5 ? -1 : 0; act = st < 1.3 ? 1 : 0;
+      break;
+  }
+  if (!xy) dY = GY - dAlt;
+
+  // smooth parameters (60 Hz)
+  var pr = propT > propSpd ? 0.9 : 1.7;
+  propSpd += (propT - propSpd) * pr * STEP;
+  if (propT === 0 && propSpd < 0.02) propSpd = 0;
+  propPh += propSpd * STEP * 30;
+  headS += (headT - headS) * 4.5 * STEP;
+  glowS += (glowT - glowS) * 3.0 * STEP;
+  ctrlS += (ctrlT - ctrlS) * 4.0 * STEP;
+
+  // lights
+  var bc = T * 1.2; bc -= Math.floor(bc);
+  navOn = lights ? (state === S_MOTOR ? ((frame >> 4) & 1) : (bc < 0.75 ? 1 : 0)) : 0;
+  if (dS < 0.13 && lights) navOn = bc < 0.35 ? 1 : 0;
+  var sc = T / 1.3; sc = (sc - Math.floor(sc)) * 1.3;
+  strobe = lights && (sc < 0.06 || (sc > 0.16 && sc < 0.22)) ? 1 : 0;
+  dLevel = dS > 0.72 ? 0 : dS > 0.45 ? 1 : dS > 0.22 ? 2 : 3;
+
+  // dust
+  if (dVis && propSpd > 0.3) {
+    var k = 0;
+    if (state === S_MOTOR) k = 0.12 * propSpd;
+    else if (dAlt < 16 && (state === S_TAKE || state === S_LAND || state === S_FLY)) k = (1 - dAlt / 16) * propSpd * 0.5;
+    else if (state === S_SPIN) k = 0.05 * propSpd;
+    if (k > 0 && rnd() < k) {
+      var side = rnd() < 0.5 ? -1 : 1;
+      var spd = (state === S_MOTOR || state === S_SPIN ? 6 : 14 + 22 * (1 - dAlt / 16)) * (0.6 + rnd() * 0.6);
+      spawn(0, dX + side * (1 + rnd() * 5), 87 + rnd() * 1.5, side * spd, -(1 + rnd() * 5), 0.5 + rnd() * 0.8);
+    }
+  }
+  // ambient motes
+  if (rnd() < 0.012) spawn(2, rnd() * 120, 30 + rnd() * 56, 1.5 + rnd() * 2, -0.4 + rnd() * 0.8, 3 + rnd() * 3);
+  // nav light sparkles (restrained)
+  if (dVis && navOn && dLevel === 0 && dAlt > 1 && rnd() < 0.03) {
+    if (rnd() < 0.5) spawn(3, lrX + (rnd() < 0.5 ? -1 : 1), lrY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
+    else spawn(4, lgX + (rnd() < 0.5 ? -1 : 1), lgY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
+  }
+  // particle physics
+  for (var i = 0; i < NP; i++) {
+    if (!pA[i]) continue;
+    pL[i] -= STEP; if (pL[i] <= 0) { pA[i] = 0; continue; }
+    if (pT[i] === 0) {
+      pVX[i] *= 0.95; pVY[i] = pVY[i] * 0.94 + 0.6 * STEP;
+      pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (pY[i] > 89) pY[i] = 89;
+    } else if (pT[i] === 2) {
+      pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP;
+    }
+  }
+
+  // quantized pose snapshot — 10 fps retro animation cadence
+  if (++poseTick >= 6) {
+    poseTick = 0;
+    var nb = Math.sin(T * 6.2832 / 3.6) > 0.3 ? -1 : 0;
+    packY = lastB; lastB = nb; pBreath = nb;
+    var nw = Math.sin(T * 6.2832 / 11) > 0.6 ? 1 : 0;
+    if (nw !== pWeight) { pWeight = nw; lagT = 3; }
+    if (lagT > 0) lagT--; else lagW = pWeight;
+    packX = lagW - pWeight;
+    pHead = Math.round(headS); pGlow = Math.round(glowS); pCtrl = Math.round(ctrlS);
+    if (act > 0.5) { if (rnd() < act * 0.45) pThL ^= 1; if (rnd() < act * 0.45) pThR ^= 1; }
+    else { pThL = 0; pThR = 0; }
+    var as = Math.sin(T * 1.9);
+    pAnt = as > 0.55 ? 1 : (as < -0.55 ? -1 : 0);
+  }
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function drawStars() {
+  for (var i = 0; i < NS; i++) {
+    var v = Math.sin(T * sSp[i] + sPh[i]);
+    if (sB[i]) { if (v > -0.3) px(sX[i], sY[i], MOON); else if (v > -0.85) px(sX[i], sY[i], CLDL); }
+    else { if (v > 0.1) px(sX[i], sY[i], CLDL); else if (v > -0.6) px(sX[i], sY[i], SKY3); }
+  }
+}
+
+function drawTufts() {
+  var wash = dVis && propSpd > 0.4 && dAlt < 22;
+  for (var i = 0; i < NT; i++) {
+    var x = tX[i], y = tY[i];
+    var b = Math.sin(T * 1.1 + i * 1.7) * 0.8;
+    if (wash) {
+      var d = x - dX, ad = d < 0 ? -d : d;
+      if (ad < 24) {
+        var sg = d < 0 ? -1 : 1;
+        b += sg * (ad < 12 ? 2 : 1) * (dAlt < 12 ? 1 : 0.6);
+        if ((((frame >> 2) + i) & 1) === 1) b -= sg * 0.7;
+      }
+    }
+    b = Math.round(b); if (b > 2) b = 2; if (b < -2) b = -2;
+    var h = y > 90 ? 4 : 3;
+    for (var k = -1; k <= 1; k++) {
+      var bh = h - (k !== 0 ? 1 : 0);
+      for (var j = 0; j < bh; j++) {
+        var o = Math.round(b * j / bh);
+        px(x + k * 1 + o + (k < 0 && j === bh - 1 ? -1 : 0), y - j, j >= bh - 1 ? GRS1 : GRS0);
+      }
+    }
+  }
+}
+
+function drawParticles(front) {
+  for (var i = 0; i < NP; i++) {
+    if (!pA[i]) continue;
+    var t = pT[i], r = pL[i] / pML[i], c;
+    if (front !== (t >= 3)) continue;
+    if (t === 0) c = r > 0.6 ? DST0 : r > 0.3 ? GND2 : GR0;
+    else if (t === 2) c = (r > 0.25 && r < 0.75) ? CLDL : SKY3;
+    else if (t === 3) c = r > 0.5 ? RED : REDD;
+    else if (t === 4) c = r > 0.5 ? GRN : GRND;
+    else c = r > 0.5 ? WHT : GR2;
+    px(Math.round(pX[i]), Math.round(pY[i]), c);
+  }
+}
+
+function drawController(x, y) {
+  px(x, y, GR2); px(x, y + 1, GR1); px(x + 7, y, GR2); px(x + 7, y + 1, GR1);   // folded antennas
+  rect(x, y + 2, 8, 1, GR1);
+  rect(x, y + 3, 8, 3, GR0);
+  if (pGlow >= 2) { rect(x + 2, y + 3, 4, 2, GLW1); px(x + 3, y + 4, GLW0); rect(x + 2, y + 2, 4, 1, GLW0); }
+  else if (pGlow === 1) { rect(x + 2, y + 3, 4, 2, GLW1); px(x + 2, y + 4, GLW0); px(x + 5, y + 3, GLW0); }
+  else { rect(x + 2, y + 3, 4, 2, GLW0); }
+  px(x + 1, y + 4, GR2); px(x + 6, y + 4, GR2);                                // sticks
+  var led;
+  if (lights) led = (state === S_MOTOR && ((frame >> 3) & 1)) ? RED : GRN;
+  else { var lt = T / 2.4; lt = (lt - Math.floor(lt)) * 2.4; led = lt < 0.12 ? GRN : GR1; }
+  px(x + 4, y + 5, led);
+  // gloves + thumbs
+  rect(x - 1, y + 3, 2, 2, BLK); px(x - 1, y + 3, GR1); px(x + 1, y + 3 + pThL, BLK);
+  rect(x + 7, y + 3, 2, 2, BLK); px(x + 8, y + 3, GR0); px(x + 6, y + 3 + pThR, BLK);
+  if (pGlow >= 1) px(x, y + 3, GLW0);
+  if (pGlow >= 2) { px(x + 7, y + 3, GLW0); px(x + 1, y + 3 + pThL, GLW0); }
+}
+
+function drawSoldier() {
+  // cast shadow (moon is upper-left)
+  rect(CX + 6, CY + 31, 18, 1, GND0); rect(CX + 13, CY + 32, 13, 1, GND0);
+  // whip antenna on the pack (lagging sway)
+  var ax = CX + 3 + pWeight + packX, ay = CY + 11 + packY;
+  for (var i = 1; i <= 8; i++) px(ax + (i > 5 ? pAnt : 0), ay - i, i === 8 ? GR2 : GR1);
+  // 1px dark outline for a strong silhouette, then the sprite itself
+  FORCE = BLK;
+  soldierBody(CX - 1, CY); soldierBody(CX + 1, CY); soldierBody(CX, CY - 1); soldierBody(CX, CY + 1);
+  FORCE = -1;
+  soldierBody(CX, CY);
+}
+function soldierBody(X, Y) {
+  var w = pWeight, b = pBreath;
+  drawPart(P_PACK, X + 1 + w + packX, Y + 11 + packY, 0, 99);
+  // legs
+  drawPart(P_LEGB, X + 8, Y + 21, 1, 99);
+  drawPart(P_LEG, X + 13 + w, Y + 21, 0, 99);
+  // torso
+  drawPart(P_TORSO, X + 5 + w, Y + 10 + b, 0, 99);
+  // head (tilt: -1 down to controller, 0 level, +1 up to the sky)
+  var hx = X + 8 + w, hy = Y + b;
+  if (pHead < 0) { hx++; hy++; } else if (pHead > 0) { hy--; }
+  drawPart(P_HEAD, hx, hy, 0, 99);
+  if (pHead < 0) { px(hx + 7, hy + 7, BRN0); px(hx + 9, hy + 7, BRN0); }
+  else { px(hx + 7, hy + 7, BLK); px(hx + 9, hy + 7, BLK); }
+  if (pHead > 0) { px(hx + 6, hy + 7, SKIN); px(hx + 9, hy + 6, GR0); }
+  if (pGlow >= 2) { px(hx + 7, hy + 9, GLW0); px(hx + 8, hy + 9, GLW0); }
+  else if (pGlow === 1 && pHead < 0) px(hx + 8, hy + 9, GLW0);
+  // arm + controller
+  var cx = X + 18 + w, cy = Y + 13 + b + pCtrl;
+  var sx = X + 15 + w, sy = Y + 11 + b, gy = cy + 3;
+  rect(sx - 1, sy + 2, 1, gy - sy - 1, OL0);
+  drawPart(P_ARM, sx, sy, 0, gy - sy);
+  rect(sx, gy, cx - 1 - sx, 2, OL1); rect(sx, gy + 1, cx - 1 - sx, 1, OL0); px(sx, gy, OL0);
+  drawController(cx, cy);
+}
+
+function prop(mx, my, half, idx) {
+  var sp = propSpd;
+  if (sp < 0.03) { rect(mx - half, my, half * 2 + 1, 1, GR1); px(mx + half, my, GR2); return; }
+  if (sp < 0.5) {
+    var f = ((propPh | 0) + idx) & 3;
+    if (f === 0) rect(mx - half, my, half * 2 + 1, 1, GR1);
+    else if (f === 2) px(mx, my, GR2);
+    else { if (half > 1) rect(mx - 1, my, 3, 1, GR1); else px(mx, my, GR1); px(mx - half, my, GR0); px(mx + half, my, GR0); }
+    return;
+  }
+  rect(mx - half, my, half * 2 + 1, 1, GR0);
+  if (((frame + idx) & 1) === 0) { px(mx - half, my, GR2); px(mx + 1, my, GR1); }
+  else { px(mx + half, my, GR2); px(mx - 1, my, GR1); }
+  px(mx, my, GR1);
+  if (((frame * 7 + idx * 13) % 23) === 0) px(mx - half + ((frame >> 1) % (half * 2 + 1)), my, RIM);
+}
+
+function navPx(x, y, c, halo, on) {
+  if (on) { px(x, y, c); if (halo >= 0) px(x + 1, y, halo); }
+  else px(x, y, GR0);
+}
+
+function drawDroneGround() {
+  if (!dVis || dLevel > 0) return;
+  var x = Math.round(dX);
+  if (dAlt < 26) {
+    var sw = 13 - ((dAlt / 2.5) | 0);
+    if (sw > 2) rect(x - (sw >> 1) + ((dAlt / 6) | 0), 88, sw, 1, GND0);
+    if (dAlt < 3) rect(x - 4, 89, 9, 1, GND0);
+  }
+  if (lights && navOn && dAlt < 7) { px(x + 5, 86, REDD); px(x + 7, 89, GRND); px(x + 8, 89, GRND); }
+}
+
+function drawDrone() {
+  var x = Math.round(dX) + vibX, y = Math.round(dY) + vibY, t = dTilt;
+  if (dLevel === 0) {
+    var bx0 = x - 4, by0 = y - 2 - t, fx0 = x + 4, fy0 = y - 2 + t;
+    var bx1 = x - 5, by1 = y + 2 - t, fx1 = x + 5, fy1 = y + 2 + t;
+    // far arms + props (behind body)
+    lineP(x - 3, y - 1, bx0, by0, GR1); lineP(x + 3, y - 1, fx0, fy0, GR1);
+    px(bx0, by0, GR1); px(fx0, fy0, GR1);
+    prop(bx0, by0 - 1, 2, 0); prop(fx0, fy0 - 1, 2, 1);
+    // body
+    rect(x - 3, y - 1, 7, 3, GR0); rect(x - 3, y, 7, 1, GR1);
+    rect(x - 2, y - 1, 5, 1, GR2); px(x - 2, y - 1, RIM); px(x - 1, y - 1, RIM);
+    px(x - 4, y, GR0); px(x - 4, y + 1, GR0);
+    px(x + 4, y, GR0);
+    // gimbal + camera
+    px(x + 3, y + 2, GR1); px(x + 4, y + 1, BLK); px(x + 5, y + 1, GR2);
+    // near arms + props (in front)
+    lineP(x - 3, y + 1, bx1, by1, GR2); lineP(x + 3, y + 1, fx1, fy1, GR2);
+    px(bx1, by1, GR2); px(fx1, fy1, GR2);
+    prop(bx1, by1 - 1, 2, 2); prop(fx1, fy1 - 1, 2, 3);
+    // lights
+    lrX = fx0 + 1; lrY = fy0; lgX = fx1 + 1; lgY = fy1;
+    navPx(lrX, lrY, RED, REDD, lights && navOn);
+    navPx(lgX, lgY, GRN, GRND, lights && navOn);
+    if (strobe) px(x - 4, y - 1, WHT);
+    if (lights) px(bx1 - 1, by1, ((frame >> 5) & 1) ? WHT : GR2);
+  } else if (dLevel === 1) {
+    rect(x - 2, y, 5, 1, GR1); px(x - 1, y, GR2); px(x + 3, y, BLK);
+    prop(x - 2, y - 1 - t, 1, 0); prop(x + 2, y - 1 + t, 1, 1);
+    prop(x - 3, y + 1 - t, 1, 2); prop(x + 3, y + 1 + t, 1, 3);
+    navPx(x + 4, y - 1 + t, RED, -1, navOn);
+    navPx(x + 5, y + 1 + t, GRN, -1, navOn);
+    if (strobe) px(x - 3, y, WHT);
+  } else if (dLevel === 2) {
+    rect(x - 1, y, 3, 1, GR1);
+    px(x - 2, y - 1, (frame & 1) ? GR1 : GR0); px(x + 2, y - 1, (frame & 1) ? GR0 : GR1);
+    if (navOn) { px(x + 2, y, RED); px(x + 2, y + 1, GRN); }
+    if (strobe) px(x - 2, y, WHT);
+  } else {
+    if (navOn) { px(x, y, RED); px(x + 1, y, GRN); }
+    if (strobe) px(x - 1, y, WHT);
+  }
+}
+
+function render() {
+  g = octx;
+  g.setTransform(1, 0, 0, 1, M, M);
+  g.drawImage(bg, -M, -M);
+  drawStars();
+  drawParticles(false);
+  drawDroneGround();
+  drawTufts();
+  drawSoldier();
+  if (dVis) drawDrone();
+  drawParticles(true);
+  dctx.drawImage(off, M, M + shake, W, H, ox, oy, W * scale, H * scale);
+}
+
+/* ---------------- Display scaling ---------------- */
+var scale = 1, ox = 0, oy = 0;
+function resize() {
+  var dpr = window.devicePixelRatio || 1;
+  var cw = Math.max(1, Math.floor(window.innerWidth * dpr)), ch = Math.max(1, Math.floor(window.innerHeight * dpr));
+  disp.width = cw; disp.height = ch;
+  scale = Math.max(1, Math.floor(Math.min(cw / W, ch / H)));
+  ox = Math.floor((cw - W * scale) / 2); oy = Math.floor((ch - H * scale) / 2);
+  dctx.imageSmoothingEnabled = false;
+  dctx.fillStyle = PAL[BLK]; dctx.fillRect(0, 0, cw, ch);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------------- Fixed-timestep loop ---------------- */
+var last = -1, acc = 0, STEP_MS = 1000 / 60;
+function loop(ts) {
+  if (last < 0) last = ts;
+  var dt = ts - last; last = ts;
+  if (dt > 250) dt = 250;
+  acc += dt;
+  while (acc >= STEP_MS) { update(); acc -= STEP_MS; }
+  render();
+  requestAnimationFrame(loop);
+}
+update(); render();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
