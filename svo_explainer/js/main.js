@@ -72,7 +72,7 @@ const boot = async () => {
   V.initMap(countries); V.initGlobe(land, countries); V.initGrain();
   const [tc, tg] = mk();
   V.makeThumbs(tt => { V.renderScene(tg, tt); return tc; });
-  const [sc, sg] = mk(); V.renderScene(sg, 55.6); V.makeSnap(sc);
+  const [sc, sg] = mk(); S.s7(sg, 55.6); V.makeSnap(sc);
   // вывод
   const cv = document.getElementById('c');
   const dpr = RENDER ? 1 : Math.min(2, window.devicePixelRatio || 1);
