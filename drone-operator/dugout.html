@@ -1294,7 +1294,10 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 segStart(0, true); update(); render();
-requestAnimationFrame(loop);
+if (location.hash === '#capture') {
+  // deterministic frame stepping for video export: window.__step(n) advances n fixed 60 Hz steps
+  window.__step = function (n) { for (var i = 0; i < n; i++) update(); render(); };
+} else requestAnimationFrame(loop);
 })();
 </script>
 </body>
