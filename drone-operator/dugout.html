@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dugout Launch</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #08080a; overflow: hidden; }
+  canvas {
+    display: block; position: fixed; left: 0; top: 0;
+    width: 100vw; height: 100vh;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+'use strict';
+
+/* =====================================================================
+   DUGOUT LAUNCH — side-view cutaway, 128x96 logical, camera follows
+   the operator out of the dugout, to the launch spot, and back inside.
+   ===================================================================== */
+
+var W = 128, H = 96, M = 1;
+var WW = 256, WH = 150;               // world size
+var SURF = 64;                        // surface row (top of ground)
+var FLOOR = 124;                      // dugout floor row
+
+/* ---------------- Palette ---------------- */
+var PAL = [
+  '#060915','#0b1226','#121b36','#1b2647','#34416a','#e2e6d2','#a1aa96','#050b0f',
+  '#0e1719','#121510','#1c1e16','#2e2c1f','#1b2d17','#2f4622','#252b19','#3c4527',
+  '#586039','#7a7150','#4b4731','#2c2116','#08080a','#1e2125','#373b41','#60666e',
+  '#8095bb','#8c6a50','#2b5d3b','#7be596','#ea3328','#561916','#3fe266','#194523',
+  '#f2f3ec','#2d52b8','#6b6352',
+  '#150e08', // 35 SOIL0  deep earth / back wall
+  '#271a10', // 36 SOIL1  earth cut face
+  '#3b2a1a', // 37 SOIL2  earth light
+  '#43301e', // 38 WOOD0  planks / logs
+  '#6b4a2b', // 39 WOOD1  lit wood
+  '#a8763c', // 40 WARM   lamp-lit highlight
+  '#f6d27e'  // 41 LAMP   bulb
+];
+var SKY0=0,SKY1=1,SKY2=2,SKY3=3,CLDL=4,MOON=5,MOONS=6,TREE=7,HILL=8,GND0=9,GND1=10,GND2=11,
+    GRS0=12,GRS1=13,OL0=14,OL1=15,OL2=16,KHA=17,KHD=18,BRN0=19,BLK=20,GR0=21,GR1=22,GR2=23,
+    RIM=24,SKIN=25,GLW0=26,GLW1=27,RED=28,REDD=29,GRN=30,GRND=31,WHT=32,BLU=33,DST0=34,
+    SOIL0=35,SOIL1=36,SOIL2=37,WOOD0=38,WOOD1=39,WARM=40,LAMP=41;
+
+/* ---------------- Canvases ---------------- */
+function mk(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+var disp = document.getElementById('c');
+var dctx = disp.getContext('2d', { alpha: false });
+var off = mk(W + 2 * M, H + 2 * M), octx = off.getContext('2d');
+var SKW = 144, SKH = 124;
+var skyC = mk(SKW, SKH), treeC = mk(184, WH), worldC = mk(WW, WH);
+var g = null;
+
+var FORCE = -1, RIMC = RIM;
+function rect(x, y, w, h, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, w, h); }
+function px(x, y, c) { g.fillStyle = PAL[FORCE >= 0 ? FORCE : c]; g.fillRect(x, y, 1, 1); }
+function lineP(x0, y0, x1, y1, c) {
+  var dx = x1 - x0, dy = y1 - y0, n = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+  if (n === 0) { px(x0, y0, c); return; }
+  for (var i = 0; i <= n; i++) px(x0 + Math.round(dx * i / n), y0 + Math.round(dy * i / n), c);
+}
+
+var seed = 0x2f6b9e31 | 0;
+function rnd() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; }
+function hash(x, y) {
+  var h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function ease(u) { return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u); }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function vnoise(x, y, sx, sy, s) {
+  var fx = x / sx, fy = y / sy, ix = Math.floor(fx), iy = Math.floor(fy);
+  var ux = ease(fx - ix), uy = ease(fy - iy);
+  var a = hash(ix, iy + s), b = hash(ix + 1, iy + s), c = hash(ix, iy + s + 1), d = hash(ix + 1, iy + s + 1);
+  return (a + (b - a) * ux) * (1 - uy) + (c + (d - c) * ux) * uy;
+}
+var BAYER4 = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
+function bay(x, y) { return BAYER4[((y & 3) << 2) | (x & 3)]; }
+
+/* =====================================================================
+   SPRITE PARTS
+   ===================================================================== */
+var CH = { K:BLK, '0':OL0, '1':OL1, '2':OL2, v:KHD, V:KHA, d:BRN0, g:GR0, G:GR1, H:GR2,
+           m:RIM, s:SKIN, w:WHT, u:BLU, r:RED };
+var HEAD = [
+  "...mm22...",
+  "..m2112122",
+  ".m21112111",
+  ".m112111GG",
+  "m11111111G",
+  "m001111110",
+  ".K0000000K",
+  ".GGgggssss",
+  ".GHggggggg",
+  "..Gggggggg",
+  "...ggggg.."
+];
+var TORSO = [
+  "...mm111112...",
+  "..m1d1111111d.",
+  "..m1dvvvvvvvd.",
+  ".m11vVVVVVVVv.",
+  ".m01vdvdvdvdv.",
+  ".001vvvvvvvvv.",
+  ".001vVVdVVdVV.",
+  ".000vvvdvvdvv.",
+  ".000vvvdvvdvv.",
+  "..00vvvvvvvvv.",
+  "..0KKKKVKKKKK.",
+  "..011101110110"
+];
+var LEG = [
+  "1111.", "1111.", "1111.", "1111.", "GHG1.", "1111.", "1111.", "0111.", "dvdd.", "ddddd", "KKKKK"
+];
+var KNEEL = [               // one knee down, front foot planted (hips at row 0)
+  "..111111111111..",
+  "..1111111111111.",
+  "..0111.....1111.",
+  "..GHG0.....dvdd.",
+  "Kdd000.....KKKKK"
+];
+var SIT = [                 // seated on a crate (hips at row 0)
+  "..11111111111...",
+  "..00111111111...",
+  "..........1111..",
+  "..........1111..",
+  "..........dvdd..",
+  "..........ddddd.",
+  "..........KKKKK."
+];
+var PACK = [
+  ".0000.", "m11110", "m12110", "011110", "0vvvv0", "0vVVv0", "0vvvv0", "011110", ".0000."
+];
+var ARM = [ "221", "ww1", "uu1", "rr1", "110", "101", "110" ];
+
+var RUNS = [];
+function buildPart(rows, camo, cox, coy) {
+  var start = RUNS.length / 4;
+  for (var y = 0; y < rows.length; y++) {
+    var row = rows[y], prev = -1, rs = 0;
+    for (var x = 0; x <= row.length; x++) {
+      var c = -1;
+      if (x < row.length && row[x] !== '.') {
+        c = CH[row[x]];
+        if (camo && c === OL1) {
+          var n = hash((x + cox) >> 1, (y + coy) >> 1);
+          if (n < 0.3) c = OL0; else if (n > 0.86) c = OL2;
+        }
+      }
+      if (c !== prev) { if (prev >= 0) RUNS.push(rs, y, x - rs, prev); prev = c; rs = x; }
+    }
+  }
+  return { o: start, n: RUNS.length / 4 - start };
+}
+var P_HEAD = buildPart(HEAD, true, 8, 0), P_TORSO = buildPart(TORSO, true, 5, 10);
+var P_LEG = buildPart(LEG, true, 12, 21), P_LEGB = buildPart(LEG, true, 3, 21);
+var P_KNEEL = buildPart(KNEEL, true, 5, 27), P_SIT = buildPart(SIT, true, 5, 27);
+var P_PACK = buildPart(PACK, true, 1, 11), P_ARM = buildPart(ARM, true, 15, 11);
+var RUNA = new Int16Array(RUNS); RUNS = null;
+var DARK = new Uint8Array(PAL.length);
+for (var q = 0; q < PAL.length; q++) DARK[q] = q;
+DARK[OL0]=GND0; DARK[OL1]=OL0; DARK[OL2]=OL1; DARK[GR1]=GR0; DARK[GR2]=GR1; DARK[BRN0]=BLK; DARK[KHD]=OL0; DARK[RIM]=OL1;
+
+/* ---- character-local drawing (24px box, mirrored when facing left) ---- */
+var CXo = 0, CYo = 0, FL = false;
+function lr(lx, ly, w, h, c) {
+  if (FL) rect(CXo + 24 - lx - w, CYo + ly, w, h, c); else rect(CXo + lx, CYo + ly, w, h, c);
+}
+function lp(lx, ly, c) { lr(lx, ly, 1, 1, c); }
+function lline(x0, y0, x1, y1, c) {
+  var dx = x1 - x0, dy = y1 - y0, n = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+  for (var i = 0; i <= n; i++) lp(x0 + Math.round(dx * i / n), y0 + Math.round(dy * i / n), c);
+}
+function lpart(p, lx, ly, dark, maxRow) {
+  for (var i = p.o, e = p.o + p.n; i < e; i++) {
+    var k = i << 2;
+    if (RUNA[k + 1] >= maxRow) continue;
+    var c = RUNA[k + 3]; if (dark) c = DARK[c]; if (c === RIM) c = RIMC;
+    lr(lx + RUNA[k], ly + RUNA[k + 1], RUNA[k + 2], 1, c);
+  }
+}
+
+/* =====================================================================
+   PRE-RENDERED LAYERS
+   ===================================================================== */
+var MOX = 26, MOY = 15, MOR = 7;
+function genSky() {
+  g = skyC.getContext('2d');
+  var x, y;
+  for (y = 0; y < SKH; y++) for (x = 0; x < SKW; x++) {
+    var yy = y + (bay(x, y) - 7.5) * 0.42;
+    px(x, y, yy < 17 ? SKY0 : yy < 33 ? SKY1 : yy < 47 ? SKY2 : SKY3);
+  }
+  for (y = -MOR - 1; y <= MOR + 1; y++) for (x = -MOR - 1; x <= MOR + 1; x++) {
+    if (x * x + y * y > MOR * MOR + MOR * 0.6) continue;
+    var c = MOON;
+    if ((x - 9) * (x - 9) + y * y < 8.2 * 8.2) c = SKY3;
+    else if ((x - 8) * (x - 8) + y * y < 9.4 * 9.4) c = MOONS;
+    px(MOX + x, MOY + y, c);
+  }
+  px(MOX-3,MOY-3,MOONS); px(MOX-2,MOY-3,MOONS); px(MOX-4,MOY+1,MOONS); px(MOX-1,MOY+2,MOONS);
+  px(MOX-2,MOY+2,MOONS); px(MOX-5,MOY-1,MOONS); px(MOX,MOY-5,MOONS); px(MOX-5,MOY-5,WHT); px(MOX-6,MOY-3,WHT);
+  var CL = [[8,19,30],[14,21,20],[2,23,14],[62,11,28],[82,13,16],[36,35,24],[96,29,22],[112,41,18]];
+  for (var ci = 0; ci < CL.length; ci++) {
+    var cx = CL[ci][0], cy = CL[ci][1], cl = CL[ci][2];
+    rect(cx + 2, cy, cl - 4, 1, SKY3); rect(cx + 6, cy - 1, cl - 13, 1, SKY3);
+    px(cx, cy, SKY2); px(cx + 1, cy, SKY3); px(cx + cl - 2, cy, SKY3);
+    if (cx < 50) for (x = cx + 6; x < cx + cl - 7; x++) if (hash(x, cy) < 0.55) px(x, cy - 1, CLDL);
+  }
+}
+function farY(x) { return 57 + Math.round(2.5 * Math.sin(x * 0.045 + 0.5) + 1.5 * Math.sin(x * 0.11 + 2.0)); }
+function genTrees() {
+  g = treeC.getContext('2d');
+  var x, y;
+  for (x = 0; x < 184; x++) { var fy = farY(x); rect(x, fy, 1, 72 - fy, HILL); }
+  seed = 0x51ed27 | 0; x = 0;
+  while (x < 186) {
+    var base = farY(x) + 1;
+    if (rnd() < 0.72) {
+      var th = 4 + ((rnd() * 7) | 0);
+      for (var r = 0; r < th; r++) {
+        var half = (r * 0.42) | 0; if (r % 3 === 2 && half > 0) half -= 1;
+        rect(x - half, base - th + r, half * 2 + 1, 1, TREE);
+      }
+    } else {
+      var br = 2 + ((rnd() * 3) | 0);
+      for (y = -br; y <= br; y++) for (var bx = -br - 1; bx <= br + 1; bx++)
+        if (bx * bx * 0.7 + y * y <= br * br + 0.5 && hash(x + bx, y + 40) > 0.08) px(x + bx, base - br + y, TREE);
+    }
+    x += 2 + ((rnd() * 4) | 0);
+  }
+}
+
+// --- world geometry helpers ---
+var ROOM_X0 = 16, ROOM_X1 = 85, ROOM_Y0 = 88;
+var STAIR_X0 = 92, STAIR_N = 15;                 // step i: x 92+4i..95+4i, tread y 120-4i
+var LAMPX = 58, LAMPY = 93;
+var GXD = 198, GYD = 61;                          // drone launch spot (body centre)
+function treadY(x) { var i = (x - STAIR_X0) >> 2; return 120 - 4 * i; }
+function feetY(x) {
+  if (x < STAIR_X0) return FLOOR - 1;
+  if (x >= STAIR_X0 + 4 * STAIR_N) return SURF - 1;
+  return treadY(x) - 1;
+}
+function inRoom(x, y) { return x >= ROOM_X0 && x <= ROOM_X1 + 6 && y >= ROOM_Y0 && y < FLOOR; }
+function inShaft(x, y) { return x >= STAIR_X0 && x < STAIR_X0 + 4 * STAIR_N && y >= SURF && y < treadY(x); }
+
+function genWorld() {
+  g = worldC.getContext('2d');
+  var x, y, i, c;
+  // earth cross-section
+  for (x = 0; x < WW; x++) for (y = SURF; y < WH; y++) {
+    var d = y - SURF;
+    var n = vnoise(x, y, 9, 5, 300) + (bay(x, y) - 7.5) * 0.014;
+    c = SOIL1;
+    if (n > 0.66) c = SOIL2; else if (n < 0.3) c = SOIL0;
+    if (y > 128 && (bay(x, y) < (y - 128) * 0.7)) c = SOIL0;
+    if (d < 3) c = d === 0 ? GRS0 : (hash(x, y) < 0.5 ? GND1 : SOIL1);
+    var h = hash(x, y + 77);
+    if (d > 3 && d < 14 && h < 0.02) c = BRN0;              // roots
+    px(x, y, c);
+  }
+  // stones
+  seed = 0x5a5a11 | 0;
+  for (i = 0; i < 40; i++) {
+    x = (rnd() * WW) | 0; y = SURF + 6 + ((rnd() * 80) | 0);
+    if (inRoom(x, y) || inShaft(x, y) || inShaft(x, y - 2)) continue;
+    var sw = 2 + ((rnd() * 3) | 0);
+    rect(x, y, sw, 2, GR0); rect(x + 1, y, sw - 1, 1, GR1);
+  }
+  // roof logs (cross-sections) over the dugout
+  for (i = 0; i < 14; i++) {
+    var lx = 15 + i * 6, ly = 84;
+    for (y = -3; y <= 3; y++) for (x = -3; x <= 3; x++) {
+      var dd = x * x + y * y; if (dd > 10) continue;
+      px(lx + x, ly + y, dd > 6 ? WOOD0 : dd > 2 ? WOOD1 : SOIL2);
+    }
+    px(lx - 1, ly - 2, WOOD1);
+  }
+  for (i = 0; i < 13; i++) {
+    var lx2 = 18 + i * 6, ly2 = 78;
+    for (y = -2; y <= 2; y++) for (x = -2; x <= 2; x++) {
+      var d2 = x * x + y * y; if (d2 > 5) continue;
+      px(lx2 + x, ly2 + y, d2 > 2 ? WOOD0 : SOIL2);
+    }
+  }
+  // dugout room: plank revetment back wall, lamp-lit
+  for (x = ROOM_X0; x <= ROOM_X1 + 6; x++) for (y = ROOM_Y0; y < FLOOR; y++) {
+    var ldx = x - LAMPX, ldy = (y - LAMPY) * 1.3, ld = Math.sqrt(ldx * ldx + ldy * ldy) + (bay(x, y) - 7.5) * 0.5;
+    var gap = ((y - ROOM_Y0) % 5) === 4;
+    var lit = ld < 13 ? 2 : ld < 24 ? 1 : 0;
+    if (gap) c = lit === 2 ? WOOD0 : SOIL0;
+    else {
+      c = lit === 2 ? WOOD1 : lit === 1 ? WOOD0 : SOIL1;
+      if (hash(x >> 3, y / 5 | 0) < 0.25 && lit < 2) c = SOIL0 === c ? SOIL1 : (lit ? SOIL1 : SOIL0);
+      if (lit === 2 && hash(x, y) < 0.05) c = WARM;
+    }
+    if (x === ROOM_X0 || y === ROOM_Y0) c = SOIL0;
+    px(x, y, c);
+  }
+  // posts
+  var POSTS = [ROOM_X0 + 1, 50, 86];
+  for (i = 0; i < POSTS.length; i++) {
+    var pxx = POSTS[i];
+    rect(pxx, ROOM_Y0, 3, FLOOR - ROOM_Y0, WOOD0);
+    var lit2 = Math.abs(pxx + 1 - LAMPX) < 14;
+    rect(pxx, ROOM_Y0, 1, FLOOR - ROOM_Y0, lit2 ? WARM : WOOD1);
+    px(pxx + 2, ROOM_Y0 + 6, SOIL0); px(pxx + 2, ROOM_Y0 + 19, SOIL0);
+  }
+  // floor planks
+  for (x = ROOM_X0; x < STAIR_X0; x++) {
+    px(x, FLOOR, (x % 9 === 0) ? SOIL0 : (Math.abs(x - LAMPX) < 16 ? WOOD1 : WOOD0));
+    px(x, FLOOR + 1, WOOD0);
+  }
+  // stair shaft (open trench) with board revetment
+  for (x = STAIR_X0 - 4; x < STAIR_X0 + 4 * STAIR_N; x++) {
+    var top = x < STAIR_X0 ? ROOM_Y0 : SURF;
+    var bot = x < STAIR_X0 ? FLOOR : treadY(x);
+    for (y = top; y < bot; y++) {
+      c = SOIL0;
+      if (x >= STAIR_X0 && (x % 6) !== 0 && y > SURF + 1) c = (hash(x / 6 | 0, y >> 2) < 0.5) ? SOIL1 : SOIL0;
+      if ((x % 6) === 5 && x >= STAIR_X0) c = WOOD0;
+      px(x, y, c);
+    }
+  }
+  for (i = 0; i < STAIR_N; i++) {
+    rect(STAIR_X0 + 4 * i, 120 - 4 * i, 4, 1, WOOD1);
+    rect(STAIR_X0 + 4 * i, 121 - 4 * i, 4, 1, WOOD0);
+    px(STAIR_X0 + 4 * i, 121 - 4 * i, SOIL0);
+  }
+  // door frame
+  rect(86, ROOM_Y0 - 1, 7, 2, WOOD0); rect(86, ROOM_Y0 - 1, 7, 1, WOOD1);
+  rect(91, ROOM_Y0, 2, FLOOR - ROOM_Y0, WOOD0); px(91, ROOM_Y0 + 4, WOOD1); px(91, ROOM_Y0 + 14, WOOD1);
+  // mound + sandbags over the roof
+  for (x = 8; x <= 92; x++) {
+    var mh = Math.round(5 * Math.sin((x - 8) / 84 * Math.PI));
+    for (y = SURF - mh; y < SURF; y++) px(x, y, y === SURF - mh ? GRS0 : SOIL1);
+  }
+  for (var row = 0; row < 2; row++) for (x = 22 + row * 4; x < 80 - row * 4; x += 8) {
+    var by = SURF - 7 - row * 3;
+    rect(x, by, 7, 3, KHD); rect(x + 1, by, 5, 1, KHA); px(x, by + 2, BRN0); px(x + 6, by + 2, BRN0);
+    if (x < 50) px(x + 1, by, RIM);
+  }
+  for (x = 156; x < 170; x += 7) { rect(x, SURF - 3, 6, 3, KHD); rect(x + 1, SURF - 3, 4, 1, KHA); }
+  rect(158, SURF - 6, 6, 3, KHD); rect(159, SURF - 6, 4, 1, KHA);
+  // camo net on poles over the entrance
+  rect(126, SURF - 18, 1, 18, WOOD0); rect(140, SURF - 16, 1, 16, WOOD0);
+  for (x = 86; x <= 150; x++) {
+    var ny = x < 126 ? Math.round(SURF - 7 - (x - 86) * 0.27) : x < 140 ? SURF - 18 + ((x - 126) / 7 | 0) : Math.round(SURF - 16 + (x - 140) * 1.4);
+    for (y = ny; y < ny + 3; y++) {
+      if (y >= SURF) continue;
+      var hh = hash(x, y + 9);
+      if (((x + y) & 1) === 0 || hh < 0.3) px(x, y, hh < 0.15 ? KHD : hh < 0.55 ? OL0 : GRS0);
+    }
+    if (hash(x, 3) < 0.3) px(x, ny + 3, OL0);
+  }
+  // launch pad (plywood) + surface grass
+  rect(GXD - 7, SURF, 15, 1, WOOD1); rect(GXD - 7, SURF + 1, 15, 1, WOOD0);
+  seed = 0x77aa13 | 0;
+  for (i = 0; i < 70; i++) {
+    x = (rnd() * WW) | 0;
+    if (x > 86 && x < 156) continue;
+    if (Math.abs(x - GXD) < 10) continue;
+    var hb = 1 + ((rnd() * 3) | 0);
+    var gy = x > 8 && x < 92 ? SURF - Math.round(5 * Math.sin((x - 8) / 84 * Math.PI)) : SURF;
+    rect(x, gy - hb, 1, hb, GRS0); if (rnd() < 0.5) px(x, gy - hb, GRS1);
+  }
+  // furniture: table, laptop, radio, crate seat, drone case, jerrycan
+  rect(18, 108, 23, 2, WOOD1); rect(18, 109, 23, 1, WOOD0); rect(19, 110, 2, 14, WOOD0); rect(38, 110, 2, 14, WOOD0);
+  rect(19, 117, 21, 1, WOOD0);
+  rect(21, 106, 10, 2, GR1); px(21, 106, GR2);                   // laptop base
+  rect(22, 98, 8, 8, GR0); rect(22, 98, 8, 1, GR1);             // laptop lid frame
+  rect(33, 102, 6, 6, OL0); rect(33, 102, 6, 1, OL1); px(34, 104, GR2); px(36, 104, GR2); rect(37, 95, 1, 7, GR1);
+  rect(48, 119, 10, 5, KHD); rect(48, 119, 10, 1, KHA); px(52, 121, BRN0); px(53, 121, BRN0);   // crate seat
+  rect(64, 117, 13, 7, GR0); rect(64, 117, 13, 1, GR1); rect(68, 119, 4, 1, GR2);              // hard case
+  rect(79, 115, 5, 9, OL0); rect(79, 115, 5, 1, OL1); rect(80, 113, 2, 2, GR0);                 // jerrycan
+  // hanging lamp
+  rect(LAMPX, ROOM_Y0, 1, 4, GR0); rect(LAMPX - 1, ROOM_Y0 + 3, 3, 1, GR1);
+}
+
+/* ---------------- Stars ---------------- */
+var NS = 36;
+var sX = new Int16Array(NS), sY = new Int16Array(NS), sB = new Uint8Array(NS), sPh = new Float32Array(NS), sSp = new Float32Array(NS);
+function genStars() {
+  var data = skyC.getContext('2d').getImageData(0, 0, SKW, SKH).data;
+  function isSky(x, y) {
+    var i = (y * SKW + x) * 4;
+    return data[i] === 6 || data[i] === 11 || data[i] === 18;   // SKY0..SKY2 red channels
+  }
+  seed = 0x13579b | 0;
+  var n = 0, guard = 0;
+  while (n < NS && guard++ < 6000) {
+    var x = 1 + ((rnd() * (SKW - 2)) | 0), y = (rnd() * 56) | 0;
+    var dx = x - MOX, dy = y - MOY; if (dx * dx + dy * dy < 140) continue;
+    if (!isSky(x, y) || !isSky(x + 1, y) || !isSky(x - 1, y)) continue;
+    sX[n] = x; sY[n] = y; sB[n] = rnd() < 0.35 ? 1 : 0; sPh[n] = rnd() * 6.283; sSp[n] = 0.6 + rnd() * 2.2; n++;
+  }
+}
+
+/* ---------------- Dither fade frames ---------------- */
+var FADE = [];
+function genFades() {
+  for (var l = 0; l <= 16; l++) {
+    var c = mk(W, H), fg = c.getContext('2d');
+    fg.fillStyle = PAL[BLK];
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if (bay(x, y) < l) fg.fillRect(x, y, 1, 1);
+    FADE.push(c);
+  }
+}
+
+genSky(); genTrees(); genWorld(); genStars(); genFades();
+
+/* ---------------- Surface tufts ---------------- */
+var TUFT = [160, 171, 181, 190, 206, 214, 226, 240, 250, 4];
+var NT = TUFT.length, tX = new Int16Array(TUFT);
+
+/* =====================================================================
+   PARTICLES (pooled)  type 0 dust, 2 mote, 3/4 red/green spark, 6 soil grain
+   ===================================================================== */
+var NP = 128;
+var pX = new Float32Array(NP), pY = new Float32Array(NP), pVX = new Float32Array(NP), pVY = new Float32Array(NP);
+var pL = new Float32Array(NP), pML = new Float32Array(NP), pT = new Uint8Array(NP), pA = new Uint8Array(NP);
+var pNext = 0;
+function spawn(t, x, y, vx, vy, life) {
+  for (var k = 0; k < NP; k++) {
+    var i = pNext + k; if (i >= NP) i -= NP;
+    if (!pA[i]) {
+      pA[i] = 1; pT[i] = t; pX[i] = x; pY[i] = y; pVX[i] = vx; pVY[i] = vy; pL[i] = life; pML[i] = life;
+      pNext = i + 1; if (pNext >= NP) pNext = 0; return;
+    }
+  }
+}
+function dustBurst(n, power) {
+  for (var k = 0; k < n; k++) {
+    var side = rnd() < 0.5 ? -1 : 1;
+    spawn(0, GXD + side * (1 + rnd() * 5), SURF - 1 - rnd() * 1.5, side * (10 + rnd() * 18) * power, -(1 + rnd() * 5), 0.6 + rnd() * 0.7);
+  }
+}
+
+/* =====================================================================
+   SCRIPT
+   ===================================================================== */
+var SEG = new Float32Array([
+  1.0,  // 0  fade in, standing at the table
+  1.6,  // 1  pick up the folded Mavic
+  0.3,  // 2  turn to the door
+  3.1,  // 3  walk to the stairs
+  5.6,  // 4  climb out
+  2.4,  // 5  walk to the launch pad
+  0.4,  // 6  kneel
+  1.0,  // 7  place drone
+  1.6,  // 8  unfold arms
+  0.4,  // 9  stand
+  0.5,  // 10 turn back
+  2.4,  // 11 walk to the trench
+  5.6,  // 12 descend
+  2.7,  // 13 walk to the crate
+  0.5,  // 14 sit
+  1.0,  // 15 take controller
+  1.6,  // 16 pre-flight
+  2.0,  // 17 camera pans to the pad
+  2.2,  // 18 motor start
+  2.4,  // 19 takeoff
+  5.0,  // 20 flight
+  2.6,  // 21 camera returns to the operator
+  2.2,  // 22 operating
+  1.0   // 23 fade out
+]);
+var STEP = 1 / 60;
+var seg = 0, st = 0, T = 0, frame = 0;
+
+// character
+var chX = 46, chY = FLOOR - 1, chFace = -1, chMode = 0, chArm = 0, walkPh = 0;
+var headS = -1, glowS = 0, ctrlS = 0, act = 0;
+// drone: 0 table, 1 carried, 2 ground folded, 3 half unfolded, 4 ready, 5 active
+var dState = 0, dX = GXD, dY = GYD, dS = 1, dTilt = 0, dVis = 1, dAlt = 0, vibX = 0, vibY = 0, shake = 0;
+var propSpd = 0, propPh = 0, lights = 0, navOn = 0, strobe = 0, dLevel = 0, lrX = 0, lrY = 0, lgX = 0, lgY = 0;
+// camera
+var camXf = 0, camYf = 54, camX = 0, camY = 54, fade = 16;
+// quantized pose
+var poseTick = 0, pBreath = 0, pWeight = 0, pHead = -1, pGlow = 0, pCtrl = 0, pThL = 0, pThR = 0, pWalk = 0, pHand = 0;
+var packX = 0, packY = 0, pAnt = 0, lastB = 0;
+
+function resetLoop() {
+  chX = 46; chY = FLOOR - 1; chFace = -1; dState = 0; propSpd = 0; propPh = 0; glowS = 0; headS = -1; ctrlS = 0;
+  camXf = 0; camYf = 54;
+  for (var i = 0; i < NP; i++) pA[i] = 0;
+}
+
+function walkTo(x0, x1, u) {
+  var nx = x0 + (x1 - x0) * u;
+  walkPh += Math.abs(nx - chX);
+  chX = nx; chY = feetY(Math.round(chX)); chMode = 1;
+  chFace = x1 > x0 ? 1 : -1;
+}
+
+function update() {
+  T += STEP; st += STEP; frame++;
+  if (st >= SEG[seg]) { st -= SEG[seg]; seg++; if (seg >= SEG.length) { seg = 0; resetLoop(); } }
+  var u = st / SEG[seg], e;
+  var headT = 0, glowT = 0, ctrlT = 0, propT = 0, camMode = 0;
+  act = 0; lights = 0; dVis = 1; dTilt = 0; dS = 1; dAlt = 0; vibX = 0; vibY = 0; shake = 0; fade = 0;
+  chMode = 0; pHand = 0;
+
+  switch (seg) {
+    case 0: chArm = 0; headT = -1; fade = Math.round(16 * (1 - u)); chFace = -1; break;
+    case 1: chFace = -1; headT = -1;
+      chArm = (u > 0.3 && u < 0.75) ? 4 : (dState === 1 ? 1 : 0);
+      if (u > 0.6) dState = 1; break;
+    case 2: chFace = 1; chArm = 1; break;
+    case 3: walkTo(46, 90, u); chArm = 1; break;
+    case 4: walkTo(90, 152, u); chArm = 1; break;
+    case 5: walkTo(152, 188, u); chArm = 1; break;
+    case 6: chMode = 2; chArm = 1; headT = -1; break;
+    case 7: chMode = 2; chArm = 3; headT = -1; if (u > 0.5) dState = 2; break;
+    case 8: chMode = 2; chArm = 3; headT = -1; pHand = (frame >> 3) & 1;
+      dState = u < 0.35 ? 2 : u < 0.7 ? 3 : 4; break;
+    case 9: chArm = 0; headT = -1; break;
+    case 10: chArm = 0; chFace = u < 0.4 ? 1 : -1; headT = 0; break;
+    case 11: walkTo(188, 152, u); chArm = 0; break;
+    case 12: walkTo(152, 90, u); chArm = 0; headT = -1; break;
+    case 13: walkTo(90, 52, u); chArm = 0; break;
+    case 14: chMode = 3; chArm = 0; chFace = -1; break;
+    case 15: chMode = 3; chArm = u < 0.6 ? 4 : 2; headT = -1; glowT = u < 0.6 ? 0 : 1; break;
+    case 16: chMode = 3; chArm = 2; headT = -1; glowT = 2; ctrlT = -1; act = 1; lights = u > 0.5 ? 1 : 0; break;
+    case 17: chMode = 3; chArm = 2; headT = -1; glowT = 2; ctrlT = -1; act = 1; lights = 1; camMode = 1;
+      propT = u > 0.5 ? 0.16 : 0; dState = 5; break;
+    case 18: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
+      if (propSpd > 0.15) { vibY = ((frame * 5) % 7 < 2) ? -1 : 0; vibX = ((frame * 3) % 11 === 0) ? 1 : 0; } break;
+    case 19: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
+      if (st < 0.25) vibY = ((frame * 5) % 7 < 2) ? -1 : 0;
+      else dAlt = 24 * ease((st - 0.25) / 2.0);
+      if (st > 0.25 && st < 0.6) shake = (frame >> 1) & 1;
+      if (st >= 0.25 && st - STEP < 0.25) dustBurst(10, 1);
+      break;
+    case 20: chMode = 3; chArm = 2; glowT = 2; act = 1; lights = 1; camMode = 1; propT = 1; dState = 5;
+      if (st < 0.9) dAlt = 24 + (Math.sin(st * 5) > 0.55 ? 1 : 0);
+      else if (st < 1.4) { dAlt = 24; dTilt = 1; }
+      else {
+        var uf = (st - 1.4) / 3.6; e = ease(uf);
+        dAlt = 24 + 33 * e; dX = GXD + 2 + 44 * e; dS = 1 - 0.92 * Math.pow(e, 0.6); dTilt = e < 0.9 ? 1 : 0;
+        if (uf >= 1) dVis = 0;
+      }
+      break;
+    case 21: chMode = 3; chArm = 2; glowT = 2; act = 1; headT = -1; dVis = 0; camMode = 2; break;
+    case 22: chMode = 3; chArm = 2; glowT = 2; act = 1; headT = -1; ctrlT = -1; dVis = 0; break;
+    case 23: chMode = 3; chArm = 2; glowT = 2; act = 1; headT = -1; ctrlT = -1; dVis = 0; fade = Math.round(16 * u); break;
+  }
+  if (seg < 17 || seg > 20) { if (seg < 20 || seg > 20) { } }
+  if (dState === 5) { if (seg !== 20 || st < 1.4) dX = GXD + (seg === 20 && st >= 0.9 && st < 1.4 ? Math.round((st - 0.9) * 4) : 0); dY = GYD - dAlt; }
+  if (seg >= 21) dVis = 0;
+
+  // smoothing
+  var pr = propT > propSpd ? 0.9 : 1.7;
+  propSpd += (propT - propSpd) * pr * STEP; if (propT === 0 && propSpd < 0.02) propSpd = 0;
+  propPh += propSpd * STEP * 30;
+  headS += (headT - headS) * 4.5 * STEP;
+  glowS += (glowT - glowS) * 3.0 * STEP;
+  ctrlS += (ctrlT - ctrlS) * 4.0 * STEP;
+
+  // camera
+  var tx, ty, rate;
+  if (camMode === 1) { tx = clamp(dX - 64, 0, WW - W); ty = 0; rate = 1.7; }
+  else {
+    tx = clamp(chX - 64 + chFace * 8, 0, WW - W);
+    ty = clamp((chY - (SURF - 1)) * 54 / 60, 0, WH - H);
+    rate = camMode === 2 ? 1.5 : 3.2;
+  }
+  if (seg === 0 && st < STEP * 1.5) { camXf = tx; camYf = ty; }
+  camXf += (tx - camXf) * rate * STEP; camYf += (ty - camYf) * rate * STEP;
+  camX = Math.round(camXf); camY = Math.round(camYf);
+
+  // lights
+  var bc = T * 1.2; bc -= Math.floor(bc);
+  navOn = lights ? (seg === 18 ? ((frame >> 4) & 1) : (bc < 0.75 ? 1 : 0)) : 0;
+  if (dS < 0.13 && lights) navOn = bc < 0.35 ? 1 : 0;
+  var sc = T / 1.3; sc = (sc - Math.floor(sc)) * 1.3;
+  strobe = lights && (sc < 0.06 || (sc > 0.16 && sc < 0.22)) ? 1 : 0;
+  dLevel = dS > 0.72 ? 0 : dS > 0.45 ? 1 : dS > 0.22 ? 2 : 3;
+
+  // particles: rotor dust
+  if (dState === 5 && dVis && propSpd > 0.3) {
+    var k = 0;
+    if (seg === 18) k = 0.12 * propSpd;
+    else if (dAlt < 16 && (seg === 19 || seg === 20)) k = (1 - dAlt / 16) * propSpd * 0.5;
+    if (k > 0 && rnd() < k) {
+      var side = rnd() < 0.5 ? -1 : 1;
+      var spd = (seg === 18 ? 6 : 14 + 22 * (1 - dAlt / 16)) * (0.6 + rnd() * 0.6);
+      spawn(0, dX + side * (1 + rnd() * 5), SURF - 1 - rnd() * 1.5, side * spd, -(1 + rnd() * 5), 0.5 + rnd() * 0.8);
+    }
+  }
+  // dust when he kneels / walks on the surface
+  if (seg === 6 && st < STEP * 1.5) for (var kk = 0; kk < 4; kk++) spawn(0, chX - 4 + rnd() * 8, SURF - 1, (rnd() - 0.5) * 10, -rnd() * 3, 0.5 + rnd() * 0.4);
+  // soil grains trickling from the roof
+  if (rnd() < 0.02) spawn(6, ROOM_X0 + 4 + rnd() * 64, ROOM_Y0 + 1, 0, 6 + rnd() * 6, 2.5);
+  // night air motes
+  if (rnd() < 0.012) spawn(2, camX + rnd() * 120, 20 + rnd() * 40, 1.5 + rnd() * 2, -0.4 + rnd() * 0.8, 3 + rnd() * 3);
+  // nav sparkles
+  if (dVis && dState === 5 && navOn && dLevel === 0 && dAlt > 1 && rnd() < 0.03) {
+    if (rnd() < 0.5) spawn(3, lrX + (rnd() < 0.5 ? -1 : 1), lrY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
+    else spawn(4, lgX + (rnd() < 0.5 ? -1 : 1), lgY + ((rnd() * 3) | 0) - 1, 0, 0, 0.12 + rnd() * 0.1);
+  }
+  for (var i = 0; i < NP; i++) {
+    if (!pA[i]) continue;
+    pL[i] -= STEP; if (pL[i] <= 0) { pA[i] = 0; continue; }
+    var t = pT[i];
+    if (t === 0) {
+      pVX[i] *= 0.95; pVY[i] = pVY[i] * 0.94 + 0.6 * STEP;
+      pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; if (pY[i] > SURF - 1) pY[i] = SURF - 1;
+    } else if (t === 2) { pX[i] += pVX[i] * STEP; pY[i] += pVY[i] * STEP; }
+    else if (t === 6) {
+      pVY[i] += 40 * STEP; pY[i] += pVY[i] * STEP;
+      if (pY[i] >= FLOOR - 1) { pY[i] = FLOOR - 1; pVY[i] = 0; if (pL[i] > 0.4) pL[i] = 0.4; }
+    }
+  }
+
+  // 10 fps pose snapshot
+  if (++poseTick >= 6) {
+    poseTick = 0;
+    var nb = Math.sin(T * 6.2832 / 3.6) > 0.3 ? -1 : 0;
+    packY = lastB; lastB = nb; pBreath = chMode === 1 ? 0 : nb;
+    pWeight = chMode === 0 && Math.sin(T * 6.2832 / 9) > 0.6 ? 1 : 0;
+    pWalk = ((walkPh / 2.6) | 0) & 3;
+    if (chMode === 1 && (pWalk & 1)) packY = -1;
+    pHead = Math.round(headS); pGlow = Math.round(glowS); pCtrl = Math.round(ctrlS);
+    if (act > 0.5) { if (rnd() < act * 0.45) pThL ^= 1; if (rnd() < act * 0.45) pThR ^= 1; } else { pThL = 0; pThR = 0; }
+    var as = Math.sin(T * 1.9) + (chMode === 1 ? ((pWalk & 1) ? 0.8 : -0.8) : 0);
+    pAnt = as > 0.55 ? 1 : (as < -0.55 ? -1 : 0);
+    packX = chMode === 1 ? -((pWalk >> 1) & 1) : 0;
+  }
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function drawFoldedLocal(x, y) {           // folded Mavic held in hands (character-local)
+  lr(x, y, 7, 4, GR0); lr(x, y, 7, 1, GR2); lp(x, y, RIMC);
+  lr(x + 1, y + 1, 5, 1, GR1); lr(x + 1, y + 2, 4, 1, GR1);   // folded arms on the flanks
+  lp(x + 6, y + 2, BLK); lp(x + 6, y + 3, GR1);              // camera + gimbal
+}
+function drawFoldedW(x, y, half) {        // on the ground / table (world)
+  if (half) {
+    lineP(x - 3, y - 1, x - 5, y - 2, GR1); lineP(x + 3, y - 1, x + 5, y - 2, GR1);
+    lineP(x - 3, y + 1, x - 6, y + 1, GR2); lineP(x + 3, y + 1, x + 6, y + 1, GR2);
+    rect(x - 6, y - 3, 3, 1, GR1); rect(x + 4, y - 3, 3, 1, GR1);
+  } else {
+    rect(x - 4, y, 9, 1, GR1); rect(x - 4, y + 1, 9, 1, GR2);
+  }
+  rect(x - 3, y - 1, 7, 3, GR0); rect(x - 3, y, 7, 1, GR1);
+  rect(x - 2, y - 1, 5, 1, GR2); px(x - 2, y - 1, RIM);
+  px(x + 4, y + 1, BLK);
+}
+
+function drawController(x, y) {
+  lp(x, y, GR2); lp(x, y + 1, GR1); lp(x + 7, y, GR2); lp(x + 7, y + 1, GR1);
+  lr(x, y + 2, 8, 1, GR1); lr(x, y + 3, 8, 3, GR0);
+  if (pGlow >= 2) { lr(x + 2, y + 3, 4, 2, GLW1); lp(x + 3, y + 4, GLW0); lr(x + 2, y + 2, 4, 1, GLW0); }
+  else if (pGlow === 1) { lr(x + 2, y + 3, 4, 2, GLW1); lp(x + 2, y + 4, GLW0); }
+  else lr(x + 2, y + 3, 4, 2, GLW0);
+  lp(x + 1, y + 4, GR2); lp(x + 6, y + 4, GR2);
+  lp(x + 4, y + 5, lights ? ((seg === 18 && ((frame >> 3) & 1)) ? RED : GRN) : GR1);
+  lr(x - 1, y + 3, 2, 2, BLK); lp(x - 1, y + 3, GR1); lp(x + 1, y + 3 + pThL, BLK);
+  lr(x + 7, y + 3, 2, 2, BLK); lp(x + 8, y + 3, GR0); lp(x + 6, y + 3 + pThR, BLK);
+  if (pGlow >= 1) lp(x, y + 3, GLW0);
+  if (pGlow >= 2) { lp(x + 7, y + 3, GLW0); lp(x + 1, y + 3 + pThL, GLW0); }
+}
+
+function charBody() {
+  var w = pWeight, b = pBreath, dy = (chMode === 2 || chMode === 3) ? 6 : 0;
+  var bob = (chMode === 1 && (pWalk & 1)) ? -1 : 0;
+  b += bob;
+  // pack antenna + pack
+  var ax = 3 + w + packX, ay = 11 + packY + dy;
+  for (var i = 1; i <= 7; i++) lp(ax + (i > 4 ? pAnt : 0), ay - i, i === 7 ? GR2 : GR1);
+  lpart(P_PACK, 1 + w + packX, 11 + packY + dy + bob, 0, 99);
+  // legs
+  if (chMode === 2) lpart(P_KNEEL, 5, 27, 0, 99);
+  else if (chMode === 3) lpart(P_SIT, 5, 27, 0, 99);
+  else if (chMode === 1) {
+    var f = pWalk, nf = f === 0 ? 2 : f === 2 ? -2 : 0, ff = -nf;
+    lpart(P_LEGB, 9 + ff, 21 - (f === 3 ? 1 : 0), 1, 99);
+    lpart(P_LEG, 11 + nf, 21 - (f === 1 ? 1 : 0), 0, 99);
+  } else {
+    lpart(P_LEGB, 8, 21, 1, 99);
+    lpart(P_LEG, 13 + w, 21, 0, 99);
+  }
+  // torso + head
+  lpart(P_TORSO, 5 + w, 10 + b + dy, 0, 99);
+  var hx = 8 + w, hy = b + dy;
+  if (pHead < 0) { hx++; hy++; } else if (pHead > 0) hy--;
+  lpart(P_HEAD, hx, hy, 0, 99);
+  if (pHead < 0) { lp(hx + 7, hy + 7, BRN0); lp(hx + 9, hy + 7, BRN0); }
+  else { lp(hx + 7, hy + 7, BLK); lp(hx + 9, hy + 7, BLK); }
+  if (pGlow >= 2) { lp(hx + 7, hy + 9, GLW0); lp(hx + 8, hy + 9, GLW0); }
+  // arms
+  var sx = 15 + w, sy = 11 + b + dy;
+  if (chArm === 0) {
+    var sw = chMode === 1 ? (pWalk === 0 ? 1 : pWalk === 2 ? -1 : 0) : 0;
+    lr(sx - 1, sy + 2, 1, 4, OL0);
+    lpart(P_ARM, sx, sy, 0, 99);
+    lr(sx + sw, sy + 7, 2, 2, BLK); lp(sx + sw, sy + 7, GR1);
+  } else if (chArm === 1 || chArm === 2) {
+    var cx = 18 + w, cy = 13 + b + dy + pCtrl, gy = cy + 3;
+    lr(sx - 1, sy + 2, 1, gy - sy - 1, OL0);
+    lpart(P_ARM, sx, sy, 0, gy - sy);
+    lr(sx, gy, cx - 1 - sx, 2, OL1); lr(sx, gy + 1, cx - 1 - sx, 1, OL0); lp(sx, gy, OL0);
+    if (chArm === 2) drawController(cx, cy);
+    else {
+      drawFoldedLocal(cx, cy + 1);
+      lr(cx - 1, cy + 3, 2, 2, BLK); lp(cx - 1, cy + 3, GR1);
+      lr(cx + 7, cy + 3, 2, 2, BLK); lp(cx + 8, cy + 3, GR0);
+    }
+  } else if (chArm === 3) {
+    lpart(P_ARM, sx, sy, 0, 5);
+    lline(sx + 1, sy + 5, 21, 27, OL1); lline(sx + 2, sy + 5, 22, 27, OL1); lline(sx + 1, sy + 6, 21, 28, OL0);
+    if (seg === 7 && st / SEG[7] <= 0.5) drawFoldedLocal(20, 27);
+    lr(21 + pHand, 27, 2, 2, BLK); lp(21 + pHand, 27, GR1);
+  } else if (chArm === 4) {
+    lpart(P_ARM, sx, sy, 0, 4);
+    lr(sx, sy + 4, 6, 2, OL1); lr(sx, sy + 5, 6, 1, OL0);
+    lr(sx + 6, sy + 4, 2, 2, BLK); lp(sx + 6, sy + 4, GR1);
+  }
+}
+
+function drawChar() {
+  CXo = Math.round(chX) - 12; CYo = Math.round(chY) - 31; FL = chFace < 0;
+  RIMC = chY > 80 ? WARM : RIM;
+  // contact shadow
+  var sy = Math.round(chY) + 1;
+  rect(Math.round(chX) - 7, sy, 14, 1, sy > 100 ? SOIL0 : GND0);
+  var bx = CXo, by = CYo;
+  FORCE = BLK;
+  CXo = bx - 1; charBody(); CXo = bx + 1; charBody(); CXo = bx; CYo = by - 1; charBody(); CYo = by + 1; charBody();
+  CYo = by; FORCE = -1;
+  charBody();
+}
+
+function prop(mx, my, half, idx) {
+  var sp = propSpd;
+  if (sp < 0.03) { rect(mx - half, my, half * 2 + 1, 1, GR1); px(mx + half, my, GR2); return; }
+  if (sp < 0.5) {
+    var f = ((propPh | 0) + idx) & 3;
+    if (f === 0) rect(mx - half, my, half * 2 + 1, 1, GR1);
+    else if (f === 2) px(mx, my, GR2);
+    else { if (half > 1) rect(mx - 1, my, 3, 1, GR1); else px(mx, my, GR1); px(mx - half, my, GR0); px(mx + half, my, GR0); }
+    return;
+  }
+  rect(mx - half, my, half * 2 + 1, 1, GR0);
+  if (((frame + idx) & 1) === 0) { px(mx - half, my, GR2); px(mx + 1, my, GR1); }
+  else { px(mx + half, my, GR2); px(mx - 1, my, GR1); }
+  px(mx, my, GR1);
+  if (((frame * 7 + idx * 13) % 23) === 0) px(mx - half + ((frame >> 1) % (half * 2 + 1)), my, RIM);
+}
+function navPx(x, y, c, halo, on) { if (on) { px(x, y, c); if (halo >= 0) px(x + 1, y, halo); } else px(x, y, GR0); }
+
+function drawDrone() {
+  if (dState === 0) { drawFoldedW(33, 106, false); return; }
+  if (dState === 1) return;
+  if (dState === 2 || dState === 3) { drawFoldedW(GXD, GYD + 1, dState === 3); return; }
+  if (!dVis) return;
+  var x = Math.round(dX) + vibX, y = Math.round(dY) + vibY, t = dTilt;
+  if (dLevel === 0) {
+    if (dAlt < 26) {
+      var sw = 13 - ((dAlt / 2.5) | 0);
+      if (sw > 2) rect(x - (sw >> 1) + ((dAlt / 6) | 0), SURF, sw, 1, GND0);
+    }
+    var bx0 = x - 4, by0 = y - 2 - t, fx0 = x + 4, fy0 = y - 2 + t;
+    var bx1 = x - 5, by1 = y + 2 - t, fx1 = x + 5, fy1 = y + 2 + t;
+    lineP(x - 3, y - 1, bx0, by0, GR1); lineP(x + 3, y - 1, fx0, fy0, GR1);
+    px(bx0, by0, GR1); px(fx0, fy0, GR1);
+    prop(bx0, by0 - 1, 2, 0); prop(fx0, fy0 - 1, 2, 1);
+    rect(x - 3, y - 1, 7, 3, GR0); rect(x - 3, y, 7, 1, GR1);
+    rect(x - 2, y - 1, 5, 1, GR2); px(x - 2, y - 1, RIM); px(x - 1, y - 1, RIM);
+    px(x - 4, y, GR0); px(x - 4, y + 1, GR0); px(x + 4, y, GR0);
+    px(x + 3, y + 2, GR1); px(x + 4, y + 1, BLK); px(x + 5, y + 1, GR2);
+    lineP(x - 3, y + 1, bx1, by1, GR2); lineP(x + 3, y + 1, fx1, fy1, GR2);
+    px(bx1, by1, GR2); px(fx1, fy1, GR2);
+    prop(bx1, by1 - 1, 2, 2); prop(fx1, fy1 - 1, 2, 3);
+    lrX = fx0 + 1; lrY = fy0; lgX = fx1 + 1; lgY = fy1;
+    navPx(lrX, lrY, RED, REDD, lights && navOn);
+    navPx(lgX, lgY, GRN, GRND, lights && navOn);
+    if (strobe) px(x - 4, y - 1, WHT);
+    if (lights) px(bx1 - 1, by1, ((frame >> 5) & 1) ? WHT : GR2);
+    if (lights && navOn && dAlt < 7) { px(lgX, SURF, GRND); px(lgX + 1, SURF, GRND); }
+  } else if (dLevel === 1) {
+    rect(x - 2, y, 5, 1, GR1); px(x - 1, y, GR2); px(x + 3, y, BLK);
+    prop(x - 2, y - 1 - t, 1, 0); prop(x + 2, y - 1 + t, 1, 1); prop(x - 3, y + 1 - t, 1, 2); prop(x + 3, y + 1 + t, 1, 3);
+    navPx(x + 4, y - 1 + t, RED, -1, navOn); navPx(x + 5, y + 1 + t, GRN, -1, navOn);
+    if (strobe) px(x - 3, y, WHT);
+  } else if (dLevel === 2) {
+    rect(x - 1, y, 3, 1, GR1);
+    px(x - 2, y - 1, (frame & 1) ? GR1 : GR0); px(x + 2, y - 1, (frame & 1) ? GR0 : GR1);
+    if (navOn) { px(x + 2, y, RED); px(x + 2, y + 1, GRN); }
+    if (strobe) px(x - 2, y, WHT);
+  } else {
+    if (navOn) { px(x, y, RED); px(x + 1, y, GRN); }
+    if (strobe) px(x - 1, y, WHT);
+  }
+}
+
+function drawInterior() {
+  // lamp flicker
+  var fl = hash((T * 12) | 0, 5) < 0.04;
+  px(LAMPX, ROOM_Y0 + 4, fl ? WARM : LAMP); px(LAMPX - 1, ROOM_Y0 + 4, WARM); px(LAMPX + 1, ROOM_Y0 + 4, WARM);
+  // laptop screen: standby or FPV feed
+  var x0 = 23, y0 = 99;
+  if (pGlow >= 1 || seg >= 16) {
+    rect(x0, y0, 6, 6, BLK);
+    var hz = y0 + 3 + (dState === 5 ? clamp(Math.round(dAlt / 12), 0, 2) : 0) - (dTilt > 0 ? 1 : 0);
+    rect(x0, hz, 6, 1, GLW1);
+    rect(x0, hz + 1, 6, y0 + 6 - hz - 1, GLW0);
+    px(x0 + 2 + ((T * 3) | 0) % 2, y0 + 1, GLW0);            // OSD blink
+    px(x0 + 5, y0, (frame >> 4) & 1 ? GLW1 : GLW0);
+  } else {
+    rect(x0, y0, 6, 6, GR0); px(x0 + 1, y0 + 1, GLW0);
+  }
+  // radio LED
+  px(35, 106, ((frame >> 5) & 1) ? GRN : GRND);
+}
+
+function drawTufts() {
+  var wash = dState === 5 && dVis && propSpd > 0.4 && dAlt < 22;
+  for (var i = 0; i < NT; i++) {
+    var x = tX[i], y = SURF - 1;
+    var b = Math.sin(T * 1.1 + i * 1.7) * 0.8;
+    if (wash) {
+      var d = x - dX, ad = d < 0 ? -d : d;
+      if (ad < 24) {
+        var sg = d < 0 ? -1 : 1;
+        b += sg * (ad < 12 ? 2 : 1) * (dAlt < 12 ? 1 : 0.6);
+        if ((((frame >> 2) + i) & 1) === 1) b -= sg * 0.7;
+      }
+    }
+    b = Math.round(b); if (b > 2) b = 2; if (b < -2) b = -2;
+    for (var k = -1; k <= 1; k++) {
+      var bh = 4 - (k !== 0 ? 1 : 0);
+      for (var j = 0; j < bh; j++) px(x + k + Math.round(b * j / bh), y - j, j >= bh - 1 ? GRS1 : GRS0);
+    }
+  }
+}
+
+function drawParticles(front) {
+  for (var i = 0; i < NP; i++) {
+    if (!pA[i]) continue;
+    var t = pT[i], r = pL[i] / pML[i], c;
+    if (front !== (t === 3 || t === 4)) continue;
+    if (t === 0) c = r > 0.6 ? DST0 : r > 0.3 ? GND2 : GR0;
+    else if (t === 2) c = (r > 0.25 && r < 0.75) ? CLDL : SKY3;
+    else if (t === 3) c = r > 0.5 ? RED : REDD;
+    else if (t === 4) c = r > 0.5 ? GRN : GRND;
+    else c = SOIL2;
+    px(Math.round(pX[i]), Math.round(pY[i]), c);
+  }
+}
+
+function render() {
+  g = octx;
+  g.setTransform(1, 0, 0, 1, M, M);
+  var skx = -Math.round(camX * 0.08), sky = -Math.round(camY * 0.3);
+  g.drawImage(skyC, skx - M, sky - M);
+  for (var i = 0; i < NS; i++) {
+    var v = Math.sin(T * sSp[i] + sPh[i]), x = sX[i] + skx, y = sY[i] + sky;
+    if (sB[i]) { if (v > -0.3) px(x, y, MOON); else if (v > -0.85) px(x, y, CLDL); }
+    else { if (v > 0.1) px(x, y, CLDL); else if (v > -0.6) px(x, y, SKY3); }
+  }
+  g.drawImage(treeC, -Math.round(camX * 0.4) - M, -camY);
+  g.drawImage(worldC, -camX, -camY);
+  g.setTransform(1, 0, 0, 1, M - camX, M - camY);
+  drawInterior();
+  drawParticles(false);
+  drawTufts();
+  if (dState === 0 || dState === 2 || dState === 3) drawDrone();
+  drawChar();
+  if (dState >= 4) drawDrone();
+  drawParticles(true);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  if (fade > 0) g.drawImage(FADE[fade], M, M + shake);
+  dctx.drawImage(off, M, M + shake, W, H, ox, oy, W * scale, H * scale);
+}
+
+/* ---------------- Display ---------------- */
+var scale = 1, ox = 0, oy = 0;
+function resize() {
+  var dpr = window.devicePixelRatio || 1;
+  var cw = Math.max(1, Math.floor(window.innerWidth * dpr)), ch = Math.max(1, Math.floor(window.innerHeight * dpr));
+  disp.width = cw; disp.height = ch;
+  scale = Math.max(1, Math.floor(Math.min(cw / W, ch / H)));
+  ox = Math.floor((cw - W * scale) / 2); oy = Math.floor((ch - H * scale) / 2);
+  dctx.imageSmoothingEnabled = false;
+  dctx.fillStyle = PAL[BLK]; dctx.fillRect(0, 0, cw, ch);
+}
+window.addEventListener('resize', resize);
+resize();
+
+var last = -1, acc = 0, STEP_MS = 1000 / 60;
+function loop(ts) {
+  if (last < 0) last = ts;
+  var dt = ts - last; last = ts; if (dt > 250) dt = 250;
+  acc += dt;
+  while (acc >= STEP_MS) { update(); acc -= STEP_MS; }
+  render();
+  requestAnimationFrame(loop);
+}
+resetLoop(); update(); render();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
